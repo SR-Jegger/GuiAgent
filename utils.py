@@ -16,7 +16,7 @@ from typing import Any, Optional
 import pyautogui
 import pyperclip
 from PIL import Image, ImageDraw
-from prompt import SYSTEM_PROMPT_NEW as SYSTEM_PROMPT
+from prompt import SYSTEM_PROMPT_310 as SYSTEM_PROMPT
 
 # OpenCV for template matching (optional dependency)
 try:
@@ -601,14 +601,16 @@ def build_messages(image_path, instruction, history_output, model_name, history_
         A list of message dicts suitable for the DashScope API.
     """
     current_step = len(history_output)
-    history_start_idx = max(0, current_step - history_n)
-
+    # history_start_idx = max(0, current_step - history_n)
+    history_start_idx = max(0, current_step)
+    
     # Summarize early actions (before the image-history window)
     previous_actions = []
     for i in range(history_start_idx):
         if i < len(history_output):
             text = history_output[i]["output"]
             if "Action:" in text and "<tool_call>" in text:
+                # 从文本中提取 Action: 和 <tool_call> 之间的内容
                 text = text.split("Action:")[1].split("<tool_call>")[0].strip()
             previous_actions.append(f"Step {i + 1}: {text}")
 
@@ -618,7 +620,7 @@ def build_messages(image_path, instruction, history_output, model_name, history_
         "Please generate the next move according to the UI screenshot, "
         "instruction and previous actions.\n\n"
         f"Instruction: {instruction}\n\n"
-        f"Previous actions:\n{previous_actions_str}"
+        f"Previous actions Have finished:\n{previous_actions_str}"
     )
 
     # Assemble messages
@@ -722,6 +724,34 @@ def extract_tool_calls(text):
     return actions
 
 
+def extract_template_request(text: str):
+    """
+    Extract JSON from <template_match>...</template_match>
+    """
+
+    pattern = r"<template_match>(.*?)</template_match>"
+    match = re.search(pattern, text, re.DOTALL)
+
+    if not match:
+        return None
+
+    try:
+        request_json = match.group(1).strip()
+        return json.loads(request_json)
+    except Exception as e:
+        print(f"[TEMPLATE_MATCH] JSON parse error: {e}")
+        return None
+    
+def extract_action(text: str):
+    """
+    Extract the action from the LLM response.
+    """
+    pattern = r'Action:.*'
+    match = re.search(pattern, text)
+    if match:
+        result = match.group(0)
+        print(result)  # 输出: Action:xxxxx <tool>xxx</tool>
+    return result.strip() if match else None
 # ---------------------------------------------------------------------------
 # Output directory helper
 # ---------------------------------------------------------------------------
@@ -926,8 +956,9 @@ class TemplateMatcher:
         
         template_path = os.path.join(self.template_dir, template_name)
         if not os.path.exists(template_path):
+            print(f"[WARN] Template file does not exist: {template_path}")
             return None
-        
+        template_path = template_path.encode('gbk')
         template = cv2.imread(template_path)
         if template is not None:
             self.template_cache[template_name] = template
@@ -953,7 +984,7 @@ class TemplateMatcher:
         if template is None:
             print(f"[WARN] Template not found: {template_name}")
             return None
-        
+        screenshot_path = screenshot_path.encode('gbk') 
         screenshot = cv2.imread(screenshot_path)
         if screenshot is None:
             print(f"[ERROR] Cannot load screenshot: {screenshot_path}")
@@ -997,6 +1028,7 @@ class TemplateMatcher:
             for file in files:
                 if file.endswith('.png'):
                     rel_path = os.path.relpath(os.path.join(root, file), self.template_dir)
+                    print(f"[INFO] Searching for template: {rel_path}")
                     coord = self.find(rel_path, screenshot_path)
                     if coord:
                         results[rel_path] = coord
@@ -1033,7 +1065,7 @@ class TemplateMatcher:
         """
         if not CV2_AVAILABLE:
             return False
-        
+        screenshot_path = screenshot_path.encode('gbk') 
         screenshot = cv2.imread(screenshot_path)
         if screenshot is None:
             return False

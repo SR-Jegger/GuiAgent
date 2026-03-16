@@ -1,158 +1,16 @@
 {
   "templates": [
     {
-      "file": "buttons/close.png",
-      "name": "关闭按钮",
-      "description": "红色的 X 关闭按钮，常见于窗口右上角或对话框",
+      "file": "icons/fsdz.png",
+      "name": "发射邓总按钮",
+      "description": "用于B站(bilibili网站)视频发射邓总操作的图标",
       "tags": [
-        "关闭",
-        "退出",
-        "取消",
-        "红色",
-        "X",
-        "叉号"
-      ],
-      "category": "buttons",
-      "usage_count": 0,
-      "created_at": "2026-03-09T00:00:00"
-    },
-    {
-      "file": "buttons/confirm.png",
-      "name": "确认按钮",
-      "description": "绿色或蓝色的确认/确定按钮",
-      "tags": [
-        "确认",
-        "确定",
-        "同意",
-        "提交",
-        "绿色"
-      ],
-      "category": "buttons",
-      "usage_count": 0,
-      "created_at": "2026-03-09T00:00:00"
-    },
-    {
-      "file": "buttons/cancel.png",
-      "name": "取消按钮",
-      "description": "灰色或白色的取消按钮",
-      "tags": [
-        "取消",
-        "返回",
-        "放弃",
-        "灰色"
-      ],
-      "category": "buttons",
-      "usage_count": 0,
-      "created_at": "2026-03-09T00:00:00"
-    },
-    {
-      "file": "icons/search.png",
-      "name": "搜索图标",
-      "description": "放大镜图标，用于搜索功能入口",
-      "tags": [
-        "搜索",
-        "查找",
-        "放大镜",
-        "查询"
-      ],
-      "category": "icons",
-      "usage_count": 0,
-      "created_at": "2026-03-09T00:00:00"
-    },
-    {
-      "file": "icons/menu.png",
-      "name": "菜单图标",
-      "description": "三横线汉堡菜单图标",
-      "tags": [
-        "菜单",
-        "导航",
-        "汉堡",
-        "三横线"
-      ],
-      "category": "icons",
-      "usage_count": 0,
-      "created_at": "2026-03-09T00:00:00"
-    },
-    {
-      "file": "icons/home.png",
-      "name": "主页图标",
-      "description": "房子形状的主页图标",
-      "tags": [
-        "主页",
-        "首页",
-        "房子",
-        "home"
-      ],
-      "category": "icons",
-      "usage_count": 0,
-      "created_at": "2026-03-09T00:00:00"
-    },
-    {
-      "file": "icons/settings.png",
-      "name": "设置图标",
-      "description": "齿轮形状的设置图标",
-      "tags": [
-        "设置",
-        "配置",
-        "齿轮",
-        "选项"
-      ],
-      "category": "icons",
-      "usage_count": 0,
-      "created_at": "2026-03-09T00:00:00"
-    },
-    {
-      "file": "apps/firefox.png",
-      "name": "Firefox 浏览器",
-      "description": "Firefox 火狐浏览器应用图标",
-      "tags": [
-        "Firefox",
-        "火狐",
-        "浏览器",
-        "上网"
-      ],
-      "category": "apps",
-      "usage_count": 0,
-      "created_at": "2026-03-09T00:00:00"
-    },
-    {
-      "file": "apps/chrome.png",
-      "name": "Chrome 浏览器",
-      "description": "Google Chrome 浏览器应用图标",
-      "tags": [
-        "Chrome",
-        "谷歌",
-        "浏览器",
-        "上网"
-      ],
-      "category": "apps",
-      "usage_count": 0,
-      "created_at": "2026-03-09T00:00:00"
-    },
-    {
-      "file": "apps/terminal.png",
-      "name": "终端",
-      "description": "终端/命令行应用图标",
-      "tags": [
-        "终端",
-        "命令行",
-        "shell",
-        "控制台"
-      ],
-      "category": "apps",
-      "usage_count": 0,
-      "created_at": "2026-03-09T00:00:00"
-    },
-    {
-      "file": "icons/B站_点赞.png",
-      "name": "点赞按钮",
-      "description": "用于B站(bilibili网站)视频点赞",
-      "tags": [
-        "点赞",
+        "发射邓总",
+        "发射邓总",
         "B站视频点赞"
       ],
       "category": "icons",
-      "usage_count": 0,
+      "usage_count": 19,
       "created_at": "2026-03-10T10:19:07.164778"
     }
   ]

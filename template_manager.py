@@ -68,12 +68,20 @@ def cmd_list(args):
 
 def cmd_test(args):
     """测试模板匹配"""
+    # args.template_dir = "./templates"  # 硬编码模板目录
     matcher = TemplateMatcher(args.template_dir, threshold=args.threshold)
     
     print(f"正在匹配模板：{args.template}")
     print(f"截图：{args.screenshot}")
     print(f"阈值：{args.threshold}\n")
-    
+    # if not os.path.exists(args.template):
+    #     print(f"✗ 模板不存在：{args.template}")
+    #     sys.exit(1)
+        
+    if not os.path.exists(args.screenshot):
+        print(f"✗ 截图不存在：{args.screenshot}")
+        sys.exit(1)
+        
     if args.all:
         # 匹配所有模板
         results = matcher.find_all(args.screenshot)
@@ -152,7 +160,7 @@ def main():
     test_parser = subparsers.add_parser("test", help="测试模板匹配")
     test_parser.add_argument("--template", required=True, help="模板文件名")
     test_parser.add_argument("--screenshot", required=True, help="测试截图路径")
-    test_parser.add_argument("--threshold", type=float, default=0.8, help="匹配置信度阈值 (默认：0.8)")
+    test_parser.add_argument("--threshold", type=float, default=0.5, help="匹配置信度阈值 (默认：0.8)")
     test_parser.add_argument("--multiple", action="store_true", help="返回所有匹配（不只最佳）")
     test_parser.add_argument("--all", action="store_true", help="匹配所有模板")
     test_parser.set_defaults(func=cmd_test)
@@ -173,3 +181,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+# python template_knowledge.py add  --file icons/search.png --name "搜索图标" --desc "放大镜图标" --tags "搜索，查找，放大镜" --category icons
+# python template_manager.py info --template icons/fsdz.png
+# python template_manager.py test   --template icons/fsdz.png   --screenshot "./templates/icons/anno_26_0.png"

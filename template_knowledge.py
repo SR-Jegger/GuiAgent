@@ -287,7 +287,7 @@ class TemplateKnowledgeBase:
         
         # 过滤和排序
         matches = []
-        for i, sim in enumerate(simulations):
+        for i, sim in enumerate(similarities):
             if sim > threshold:
                 matches.append((self.templates[i]["file"], float(sim)))
         

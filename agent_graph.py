@@ -28,6 +28,8 @@ from utils import (
     annotate_screenshot,
     build_messages,
     extract_tool_calls,
+    extract_template_request,
+    extract_action,
     get_output_dir,
     sanitize_filename,
     smart_resize,
@@ -35,10 +37,10 @@ from utils import (
     format_step_text,
     process_markdown_task
 )
-
+import re
 from PIL import Image
 from openai import OpenAI
-
+from template_knowledge import TemplateKnowledgeBase
 
 # ============================================================================
 # State Definition
@@ -93,6 +95,10 @@ class AgentState(TypedDict, total=False):
     max_retries: int
     stop_flag: bool
     history: list[dict]
+    judge_result: Optional[str]
+    template_request: Optional[str]
+    action_coordinate: Optional[tuple[int, int]]
+    action_history: list[dict]
 
     # Output paths
     output_dir: str
@@ -167,7 +173,9 @@ def reasoning_node(state: AgentState) -> AgentState:
     model = state.get("model", "/mnt/automl/Bigdata/model/GUI-Owl-1.5-8B-Instruct")
     base_url = state.get("base_url", "http://192.168.137.2:4040/v1")
     api_key = state.get("api_key", "EMPTY")
+    tools = state.get("tools")
 
+    FALG = False
     if not screenshot_path or not os.path.exists(screenshot_path):
         return {
             "llm_response": "",
@@ -201,21 +209,22 @@ def reasoning_node(state: AgentState) -> AgentState:
         # Call VLM
         output_text, raw_messages, raw_response = vllm.predict_mm(messages)
 
-        if output_text == "Error calling LLM":
-            return {
-                "llm_response": "",
-                "messages": raw_messages if raw_messages else messages,
-                "execution_status": "error",
-                "error_message": "VLM API call failed after retries",
-                "retry_count": state.get("retry_count", 0) + 1,
-            }
+        # if output_text == "Error calling LLM":
+        #     return {
+        #         "llm_response": "",
+        #         "messages": raw_messages if raw_messages else messages,
+        #         "execution_status": "error",
+        #         "error_message": "VLM API call failed after retries",
+        #         "retry_count": state.get("retry_count", 0) + 1,
+        #     }
 
-        # Parse response for reasoning content
+        # # Parse response for reasoning content
         llm_response = output_text
 
         # Also get response via direct OpenAI client (fallback path from original)
         try:
             client = OpenAI(base_url=base_url, api_key="EMPTY")
+            # client = OpenAI(base_url="https://dashscope.aliyuncs.com/compatible-mode/v1", api_key="sk...")
             response = client.chat.completions.create(
                 model=model,
                 messages=messages,
@@ -230,13 +239,30 @@ def reasoning_node(state: AgentState) -> AgentState:
 
         print(f"\n[REASONING] Received response from VLM :")
         # Print truncated response for debugging
-        preview = llm_response[:500] + "..." if len(llm_response) > 500 else llm_response
-        print(preview)
+        
+        print(llm_response)
+        action_list = extract_tool_calls(llm_response)
+        for reason_action in action_list:
+            action_type = reason_action["arguments"]["action"]
+            if action_type in ("stop", "terminate", "done"):
+                # status = reason_action["arguments"].get("status", "success")
+                StepPopup.show_blocking(
+                    "Task Completed",
+                    f"Task completed with status: success",
+                    image_path="",
+                    timeout_sec=120,
+                    width=960,
+                    height=540,
+                )
+                FALG = True  # signal to stop
+                print("[REASONING] Stop signal received")
+                break
 
         return {
             "llm_response": llm_response,
             "messages": messages,
             "execution_status": "success",
+            "stop_flag": FALG,
             "error_message": None,
             "retry_count": 0,
         }
@@ -249,6 +275,53 @@ def reasoning_node(state: AgentState) -> AgentState:
             "error_message": f"Reasoning node error: {str(e)}",
             "retry_count": state.get("retry_count", 0) + 1,
         }
+
+
+def judge_node(state: AgentState) -> AgentState:
+    step_id = state.get("step_id", 0)
+    llm_response = state.get("llm_response", "")
+    task = state.get("instruction", "")
+
+    print(f"\n[JUDGE] Step {step_id}: Evaluating if task need match...")
+
+    pattern = r"Observation:(.*?)Thought:(.*?)(?:Action:|<tool_call>)"
+    match = re.search(pattern, llm_response, re.DOTALL)
+    observation  = match.group(1).strip() if match else ""
+    thought = match.group(2).strip() if match else ""
+
+    from prompt_llm import JUDGE_PROMPT_2 as JUDGE_PROMPT
+    print("测试!!!!",observation, thought)
+    prompt = JUDGE_PROMPT.format(observation=observation, agent_thought=thought)
+    message_for_judge = [{
+        "role": "user",
+        "content": [{"type": "text", "text": prompt}]
+    }]
+
+    try:
+        llm_url = "http://192.168.137.2:4050/v1"
+        client = OpenAI(base_url=llm_url, api_key="EMPTY")
+        response = client.chat.completions.create(
+            model="/mnt/automl/Bigdata/model/qwen3_8b",
+            messages=message_for_judge,
+        )
+        print(f"\n[JUDGE] Received response from Judge LLM :")
+        print(response.choices[0].message.content)
+        if "<template_match>" in response.choices[0].message.content.lower():
+            decision = "template_match"
+        # elif "template match" in response.choices[0].message.content.lower():
+        #     decision = "template_match"
+        else:
+            decision = "execute"
+        state["judge_result"] = decision
+        state["template_request"] = response.choices[0].message.content
+        state["execution_status"] = "success"
+        print(f"[JUDGE] Decision: {decision}")
+        return state
+    except Exception as e:
+        print(f"[JUDGE] Warning: Could not get Judge content: {e}")
+        return state
+
+  
 
 
 def execution_node(state: AgentState) -> AgentState:   
@@ -311,10 +384,13 @@ def execution_node(state: AgentState) -> AgentState:
             print(f"  [EXECUTION] Action {action_id + 1}: {action_type}")
 
             # Rescale coordinates
-            rescale_coordinates(action_parameter, resized_width, resized_height)
+            if state.get("action_coordinate") is None:
+                print("  [EXECUTION] !!Rescaling coordinates...")
+                rescale_coordinates(action_parameter, resized_width, resized_height)
 
             # Execute action and check for stop signal
             try:
+                print(f"  [EXECUTION] Rescaled parameters: {action_parameter}")
                 should_stop = execute_action(tools, action_parameter)
                 print(f"  [EXECUTION] Action {action_id + 1} executed successfully")
                 if should_stop:
@@ -343,7 +419,7 @@ def execution_node(state: AgentState) -> AgentState:
                     "stop_flag": stop_flag,
                 }
 
-        # Update history
+        # Update history   "output": extract_action(llm_response),
         history_entry = {
             "step": step_id,
             "output": llm_response,
@@ -406,7 +482,92 @@ def error_handler_node(state: AgentState) -> AgentState:
         "error_message": None,
     }
 
+def template_match_node(state: AgentState) -> AgentState:
+    """
+    Template matching fallback node.
+    Used when VLM cannot determine action coordinates.
+    
+    <template_request> {"target": {...}, "description": {...}, "expected_action": {...}}</template_request>
+    """
 
+    step_id = state.get("step_id", 0)
+    screenshot_path = state.get("screenshot_path", "")
+    llm_response = state.get("llm_response", "")
+    instruction = state.get("instruction", "")
+    template_dir = state.get("template_dir", "./templates")
+    template_request = state.get("template_request", "")
+
+    print(f"\n[TEMPLATE_MATCH] Step {step_id}: Starting template matching...")
+
+    if not screenshot_path or not os.path.exists(screenshot_path):
+        return {
+            "execution_status": "error",
+            "error_message": "Screenshot not available",
+            "retry_count": state.get("retry_count", 0) + 1,
+        }
+    # =========================
+    # 1 解析 template_request
+    # =========================
+    request = extract_template_request(template_request)
+    print(f"[TEMPLATE_MATCH] Extracted template request: {request}")
+    # request = re.sub(r'\{\s*"([^"]+)"\s*\}', r'"\1"', request)
+    if not request:
+        print("[TEMPLATE_MATCH] No template_request found")
+
+        return {
+            "execution_status": "error",
+            "error_message": "template_request not found",
+            "retry_count": state.get("retry_count", 0) + 1,
+        }
+
+    target = request.get("target", "")
+    description = request.get("description", "")
+    expected_action = request.get("expected_action", "left_click")
+
+    print(f"[TEMPLATE_MATCH] Target: {target}")
+    print(f"[TEMPLATE_MATCH] Description: {description}")
+
+    # 2 构造搜索 query
+    query = target if target else description
+    # query = description if description else target
+
+    # 3 初始化模板库
+    kb = TemplateKnowledgeBase(template_dir=template_dir)
+
+    # 4 执行模板匹配
+    coord = kb.find_and_locate(query, screenshot_path)
+
+    if not coord:
+        print("[TEMPLATE_MATCH] Template match failed")
+        return {
+            "execution_status": "error",
+            "error_message": f"Template match failed for {target}",
+            "retry_count": state.get("retry_count", 0) + 1,
+        }
+    x, y = coord
+
+    print(f"[TEMPLATE_MATCH] Found coordinate: ({x}, {y})")
+    # 5 生成 tool_call
+    tool_call = {
+        "name": "computer_use",
+        "arguments": {
+            "action": expected_action,
+            "coordinate": [x, y]
+        }
+    }
+    tool_call_str = f"""
+    Observation: Template matched for target '{target}' at coordinates ({x}, {y}).
+    Thought: The VLM could not determine the action coordinates, but we successfully found the target using template matching. We will execute the expected action at the matched coordinates.
+    Action: {f"已成功执行 {target} 操作/命令, 请继续下一步"}
+    <tool_call>{json.dumps(tool_call)}</tool_call>
+    """
+    print(f"[TEMPLATE_MATCH] Generated tool call: {tool_call_str}")
+    return {
+        "action_coordinate": (x, y),
+        "llm_response": tool_call_str,
+        "execution_status": "success",
+        "retry_count": 0,
+    }
 # ============================================================================
 # Helper Functions
 # ============================================================================
@@ -583,6 +744,8 @@ def build_agent_graph() -> StateGraph:
     # Add nodes
     builder.add_node("capture", capture_node)
     builder.add_node("reasoning", reasoning_node)
+    builder.add_node("judge", judge_node)
+    builder.add_node("template_match", template_match_node)
     builder.add_node("execution", execution_node)
     builder.add_node("error_handler", error_handler_node)
 
@@ -595,7 +758,30 @@ def build_agent_graph() -> StateGraph:
             return "reasoning"
         return "error_handler"
 
-    def reasoning_router(state: AgentState) -> Literal["execution", "error_handler"]:
+    # def reasoning_router(state: AgentState) -> Literal["execution", "template_match", "error_handler"]:
+    #     if "<template_request>" in state.get("llm_response", ""):
+    #         return "template_match"
+    #     if "<tool_call>" in state.get("llm_response", "") or state.get("execution_status") == "success":
+    #         return "execution"
+    #     return "error_handler"
+
+    def reasoning_router(state: AgentState) -> Literal["execution", "judge", "error_handler"]:
+        if state.get("stop_flag"):
+            return "END"
+        elif state.get("execution_status") == "success":
+            return "judge"
+        return "error_handler"
+    
+    def judge_router(state: AgentState) -> Literal["execution", "template_match", "error_handler"]:
+        judge_result = state.get("judge_result", "execute")
+        if judge_result == "template_match":
+            return "template_match"
+        elif judge_result == "execute":
+            return "execution"
+        else:
+            return "error_handler"
+        
+    def template_router(state: AgentState) -> Literal["execution", "error_handler"]:
         if state.get("execution_status") == "success":
             return "execution"
         return "error_handler"
@@ -621,13 +807,22 @@ def build_agent_graph() -> StateGraph:
             "error_handler": "error_handler",
         },
     )
-
-    # Reasoning -> Execution or Error Handler
     builder.add_conditional_edges(
         "reasoning",
         reasoning_router,
         {
+            "END": END,
+            "judge": "judge",
+            "error_handler": "error_handler",
+        },
+    )
+    
+    builder.add_conditional_edges(
+        "judge",
+        judge_router,
+        {
             "execution": "execution",
+            "template_match": "template_match",
             "error_handler": "error_handler",
         },
     )
@@ -643,6 +838,15 @@ def build_agent_graph() -> StateGraph:
         },
     )
 
+    builder.add_conditional_edges(
+        "template_match",
+        template_router,
+        {
+            "execution": "execution",
+            "error_handler": "error_handler",
+        },
+    )
+    
     # Error Handler -> Retry or End
     builder.add_conditional_edges(
         "error_handler",
@@ -819,7 +1023,6 @@ def parse_args() -> argparse.Namespace:
 
 def main():
     args = parse_args()
-
     # Determine instruction source
     instruction = args.instruction or ""
     mdpath = args.mdpath if not instruction else None
@@ -828,6 +1031,7 @@ def main():
     #     with open(mdpath, "r", encoding="utf-8") as f:
     #         instruction = f.read().strip()
     read_markdown = process_markdown_task(mdpath) # if mdpath and os.path.exists(mdpath) else None
+    task_name = "default_task"
     if read_markdown:
         task_name = read_markdown["extracted_title"]
         instruction = read_markdown["prompt_for_llm"]
@@ -835,10 +1039,10 @@ def main():
     if not instruction:
         print("[ERROR] No instruction provided. Use --instruction or --mdpath")
         sys.exit(1)
-    print(task_name,"=============")
+
     # Run the agent
     final_state = run_agent(
-        task_name= task_name if read_markdown else "default_task",
+        task_name= task_name,
         instruction=instruction,
         model=args.model,
         base_url=args.base_url,
