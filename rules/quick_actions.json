@@ -1,0 +1,121 @@
+{
+  "version": "1.0",
+  "description": "快速操作规则库 - 用于固定任务场景的快捷定位",
+  "rules": [
+    {
+      "id": "close_current_window",
+      "name": "关闭当前窗口",
+      "description": "使用 Alt+F4 快捷键关闭窗口",
+      "trigger": {
+        "patterns": [
+          ".*关闭窗口.*",
+          ".*退出.*",
+          ".*关闭.*"
+        ]
+      },
+      "actions": [
+        {
+          "type": "hotkey",
+          "keys": ["alt", "f4"]
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "id": "task_assignment",
+      "name": "指派任务",
+      "description": "使用对第一架或状态为巡航的飞机执行指派任务功能",
+      "trigger": {
+        "patterns": [
+          ".*指派任务.*",
+          ".*任务指派.*",
+          ".*分配任务.*",
+          ".*安排任务.*"
+        ]
+      },
+      "actions": [
+        {
+          "type": "right_click",
+          "coordinate": [104, 964]
+        },
+        {
+          "type":"left_click",
+          "coordinate": [197, 1100]
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "id": "scroll_down",
+      "name": "向下滚动",
+      "description": "鼠标滚轮向下滚动",
+      "trigger": {
+        "patterns": [
+          ".*向下滚动.*",
+          ".*往下翻.*",
+          ".*滚动.*"
+        ]
+      },
+      "actions": [
+        {
+          "type": "scroll",
+          "pixels": -3
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "id": "scroll_up",
+      "name": "向上滚动",
+      "description": "鼠标滚轮向上滚动",
+      "trigger": {
+        "patterns": [
+          ".*向上滚动.*",
+          ".*往上翻.*"
+        ]
+      },
+      "actions": [
+        {
+          "type": "scroll",
+          "pixels": 3
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "id": "copy_text",
+      "name": "复制文本",
+      "description": "使用 Ctrl+C 复制",
+      "trigger": {
+        "patterns": [
+          ".*复制.*",
+          ".*拷贝.*"
+        ]
+      },
+      "actions": [
+        {
+          "type": "hotkey",
+          "keys": ["ctrl", "c"]
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "id": "paste_text",
+      "name": "粘贴文本",
+      "description": "使用 Ctrl+V 粘贴",
+      "trigger": {
+        "patterns": [
+          ".*粘贴.*"
+        ]
+      },
+      "actions": [
+        {
+          "type": "hotkey",
+          "keys": ["ctrl", "v"]
+        }
+      ],
+      "enabled": true
+    }
+  ]
+}

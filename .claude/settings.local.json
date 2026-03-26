@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git checkout:*)",
+      "Bash(\"E:\\\\automl\\\\AI_project\\\\GuiAgent\\\\utils\\\\parsers.py\")",
+      "Bash(python -m py_compile agent_graph.py)"
+    ]
+  }
+}

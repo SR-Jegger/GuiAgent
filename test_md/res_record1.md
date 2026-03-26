@@ -795,3 +795,28 @@ Stop Flag: True
 Final Status: success
 Output Directory: C:\Users\Papermaker\Desktop\anno
 ============================================================
+
+{
+      "id": "task_assignment",
+      "name": "指派任务",
+      "description": "使用 对第一架飞机执行指派任务功能+D 显示桌面",
+      "trigger": {
+        "patterns": [
+          ".*指派任务.*",
+          ".*任务指派.*",
+          ".*分配任务.*",
+          ".*安排任务.*"
+        ]
+      },
+      "actions": [
+        {
+          "type": "right_click",
+          "coordinate": ["104", "964"]
+        },
+        {
+          "type":"left_click",
+          "coordinate": ["77", "763"]
+        }
+      ],
+      "enabled": true
+    },

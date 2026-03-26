@@ -1,0 +1,48 @@
+{
+  "version": "1.0",
+  "description": "多步骤任务规则示例",
+  "rules": [
+    {
+      "id": "open_file_explorer",
+      "name": "打开文件资源管理器",
+      "description": "使用 Win+E 快捷键打开文件资源管理器",
+      "trigger": {
+        "patterns": [
+          ".*打开文件资源管理器.*",
+          ".*打开我的电脑.*",
+          ".*打开资源管理器.*"
+        ]
+      },
+      "actions": [
+        {
+          "type": "hotkey",
+          "keys": ["win", "e"]
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "id": "input_text_field",
+      "name": "在输入框输入文本",
+      "description": "在任务名称输入框中输入指定文本",
+      "trigger": {
+        "patterns": [
+          ".*任务名称一栏输入 (.*)",
+          ".*在任务名称输入 (.*)",
+          ".*输入任务名称为 (.*)"
+        ]
+      },
+      "actions": [
+        {
+          "type": "left_click",
+          "coordinate": [1090, 570]
+        },
+        {
+          "type": "type",
+          "text": "{{match_group_1}}"
+        }
+      ],
+      "enabled": true
+    }
+  ]
+}

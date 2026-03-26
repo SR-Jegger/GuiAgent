@@ -40,7 +40,7 @@ from collections import Counter
 from sentence_transformers import SentenceTransformer, util
 VECTOR_SEARCH_AVAILABLE = True
 
-from utils import TemplateMatcher, CV2_AVAILABLE
+from utils.utils import TemplateMatcher, CV2_AVAILABLE
 
 
 

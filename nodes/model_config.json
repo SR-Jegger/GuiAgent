@@ -1,0 +1,20 @@
+{
+  "default": "gpt4",
+  "models": {
+    "gpt4": {
+      "model": "gpt-4o",
+      "base_url": "https://api.openai.com/v1",
+      "temperature": 0.2
+    },
+    "GUI-Owl-1.5-8B": {
+      "model": "/mnt/automl/Bigdata/model/GUI-Owl-1.5-8B-Instruct",
+      "base_url": "http://192.168.137.2:4040/v1",
+      "api_key": "EMPTY"
+    },
+    "local_qwen8b": {
+      "model": "/mnt/automl/Bigdata/model/qwen3_8b",
+      "base_url": "http://192.168.137.2:4050/v1",
+      "api_key": "EMPTY"
+    }
+  }
+}
