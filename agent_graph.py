@@ -15,6 +15,7 @@ import sys
 import time
 import json
 import argparse
+import asyncio
 from typing import Annotated, Any, Optional, Literal
 from dataclasses import dataclass, field
 
@@ -365,6 +366,7 @@ def build_agent_graph_simple() -> StateGraph:
     def continue_handler_router(state: AgentState) -> Literal["fast_path", "capture"]:
         sub_steps = state.get("sub_steps", [])
         current_step_index = state.get("current_step_index", 0)
+        print(f"\n[CONTINUE_HANDLER_ROUTER] current_step_index: {current_step_index}, sub_steps: {len(sub_steps)}")
         if sub_steps and current_step_index < len(sub_steps):
             # Has next sub-step, go to fast_path
             return "fast_path"
@@ -441,26 +443,33 @@ def build_agent_graph_simple() -> StateGraph:
     )
 
     return builder
+
 # ============================================================================
-# Agent Runner
+# Agent Runner - Async version for FastAPI integration
 # ============================================================================
 
-def run_agent(
+async def run_agent_async(
     task_name: str,
     instruction: str,
     MODEL_CONFIG: Optional[Any] = None,
     max_steps: int = 50,
     max_retries: int = 3,
     add_info: Optional[str] = None,
-    mdpath: Optional[str] = None,
     rules_dir: str = "./rules",
+    stop_event: Optional[asyncio.Event] = None,
+    compiled_agent=None,  # Pre-compiled agent for hot-start
 ) -> dict:
     """
-    Run the GUI automation agent.
+    Run the GUI automation agent asynchronously.
+
+    Args:
+        stop_event: Optional asyncio.Event to cancel the task
+        compiled_agent: Optional pre-compiled agent graph (for hot-start)
 
     Returns:
         Final agent state
     """
+    import asyncio
 
     print("=" * 60)
     print("GUI Automation Agent (LangGraph)")
@@ -470,10 +479,14 @@ def run_agent(
     print(f"Max Retries per Step: {max_retries}")
     print("=" * 60)
 
-    # Build and compile the agent graph
-    # builder = build_agent_graph()
-    builder = build_agent_graph_simple()  # For simpler tasks without judge/template match
-    agent = builder.compile()
+    # Use pre-compiled agent if provided (hot-start), otherwise compile now
+    if compiled_agent is not None:
+        agent = compiled_agent
+        print("[INFO] Using pre-compiled agent (hot-start)")
+    else:
+        builder = build_agent_graph_simple()
+        agent = builder.compile()
+        print("[INFO] Compiled agent graph (cold-start)")
 
     # Initialize state
     state: AgentState = {
@@ -494,27 +507,32 @@ def run_agent(
         "error_message": None,
         "retry_count": 0,
         "stop_flag": False,
-        "sub_flag": True,  # Whether to continue current sub-step or move to next sub-step
+        "sub_flag": True,
         "history": [],
         "output_dir": get_output_dir(),
     }
-
-    # Main execution loop with step counter
     final_state = state
     config = {"recursion_limit": 500}
 
     try:
         # Stream through the graph
         for event in agent.stream(state, config=config):
+            # Check for cancellation
+            if stop_event and stop_event.is_set():
+                print("\n[AGENT] Task cancelled by user")
+                state["stop_flag"] = True
+                state["execution_status"] = "error"
+                state["error_message"] = "Task cancelled"
+                break
+
             for node_name, node_output in event.items():
                 print(f"  [Node: {node_name}] completed")
-                # Update state with node output
                 state.update(node_output)
+
             if state.get("stop_flag"):
                 print(f"\n[AGENT] Task completed at step {state.get('step_id', 0)}")
-
+                # break
         final_state = state
-
         # Check for termination conditions
         if state.get("execution_status") == "error" and state.get("stop_flag"):
             print(f"\n[AGENT] Terminating due to errors")
@@ -527,121 +545,37 @@ def run_agent(
     print("\n" + "=" * 60)
     print("EXECUTION SUMMARY")
     print("=" * 60)
-    print(f"Total Steps Executed: {final_state.get('step_id', 0)}")
-    print(f"Stop Flag: {final_state.get('stop_flag', False)}")
-    print(f"Final Status: {final_state.get('execution_status', 'unknown')}")
-    if final_state.get("error_message"):
-        print(f"Error: {final_state['error_message']}")
-    print(f"Output Directory: {final_state.get('output_dir', 'N/A')}")
+    print(f"Total Steps Executed: {state.get('step_id', 0)}")
+    print(f"Stop Flag: {state.get('stop_flag', False)}")
+    print(f"Final Status: {state.get('execution_status', 'unknown')}")
+    if state.get("error_message"):
+        print(f"Error: {state['error_message']}")
+    print(f"Output Directory: {state.get('output_dir', 'N/A')}")
     print("=" * 60)
 
     return final_state
 
 
-# ============================================================================
-# CLI Entry Point
-# ============================================================================
+def run_agent(
+    task_name: str,
+    instruction: str,
+    MODEL_CONFIG: Optional[Any] = None,
+    max_steps: int = 50,
+    max_retries: int = 3,
+    add_info: Optional[str] = None,
+    rules_dir: str = "./rules",
+) -> dict:
+    """
+    Synchronous wrapper for run_agent_async.
 
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="LangGraph-based GUI Automation Agent"
-    )
-    parser.add_argument(
-        "--api_key",
-        default="EMPTY",
-        type=str,
-        required=False,
-        help="API key for VLM service",
-    )
-    parser.add_argument(
-        "--base_url",
-        default="http://192.168.137.2:4040/v1",
-        type=str,
-        required=False,
-        help="Base URL for the VLM service",
-    )
-    parser.add_argument(
-        "--instruction",
-        type=str,
-        required=False,
-        help="The task instruction for the agent to complete",
-    )
-    parser.add_argument(
-        "--mdpath",
-        type=str,
-        default="test_md/test_ui1.md",
-        required=False,
-        help="Path to markdown file containing the task instruction",
-    )
-    parser.add_argument(
-        "--model",
-        type=str,
-        default="/mnt/automl/Bigdata/model/GUI-Owl-1.5-8B-Instruct",
-        help="Model name for the VLM service",
-    )
-    parser.add_argument(
-        "--add_info",
-        type=str,
-        default="",
-        help="Optional supplementary knowledge for the task",
-    )
-    parser.add_argument(
-        "--max_steps",
-        type=int,
-        default=50,
-        help="Maximum number of interaction steps (default: 50)",
-    )
-    parser.add_argument(
-        "--max_retries",
-        type=int,
-        default=3,
-        help="Maximum retry attempts per step (default: 3)",
-    )
-    parser.add_argument(
-        "--rules_dir",
-        type=str,
-        default="./rules",
-        help="Directory containing rule JSON files (default: ./rules)",
-    )
-
-    return parser.parse_args()
-
-
-def main():
-    args = parse_args()
-    # Determine instruction source
-    instruction = args.instruction or ""
-    mdpath = args.mdpath if not instruction else None
-
-    read_markdown = process_markdown_task(mdpath)
-    task_name = "default_task"
-    if read_markdown:
-        task_name = read_markdown["extracted_title"]
-        instruction = read_markdown["prompt_for_llm"]
-
-    if not instruction:
-        print("[ERROR] No instruction provided. Use --instruction or --mdpath")
-        sys.exit(1)
-
-    modelconfig = json.load(open("nodes/model_config.json"))
-    # Run the agent
-    final_state = run_agent(
+    For CLI usage. For API usage, use run_agent_async directly.
+    """
+    return asyncio.run(run_agent_async(
         task_name=task_name,
         instruction=instruction,
-        MODEL_CONFIG=modelconfig,
-        max_steps=args.max_steps,
-        max_retries=args.max_retries,
-        add_info=args.add_info or None,
-        mdpath=mdpath if not args.instruction else None,
-        rules_dir=args.rules_dir,
-    )
-
-    # Return exit code based on final status
-    if final_state.get("stop_flag") and final_state.get("execution_status") != "error":
-        sys.exit(0)
-    else:
-        sys.exit(1)
-
-
-if __name__ == "__main__":
-    main()
+        MODEL_CONFIG=MODEL_CONFIG,
+        max_steps=max_steps,
+        max_retries=max_retries,
+        add_info=add_info,
+        rules_dir=rules_dir,
+    ))
