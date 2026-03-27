@@ -11,6 +11,11 @@
       "base_url": "http://192.168.137.2:4040/v1",
       "api_key": "EMPTY"
     },
+    "gui-plus-20260226": {
+      "model": "gui-plus-2026-02-26",
+      "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+      "api_key": "sk-ed54c3fd9a7345c1b72a9a72a30791ce"
+    },
     "local_qwen8b": {
       "model": "/mnt/automl/Bigdata/model/qwen3_8b",
       "base_url": "http://192.168.137.2:4050/v1",

@@ -61,7 +61,7 @@ def reasoning_node(state: AgentState) -> AgentState:
     history = state.get("history", [])
 
     MODEL_CONFIG = state.get("MODEL_CONFIG", None)
-    vlm_config = MODEL_CONFIG["models"]["GUI-Owl-1.5-8B"]
+    vlm_config = MODEL_CONFIG["models"]["gui-plus-20260226"]
     model = vlm_config["model"]
     base_url = vlm_config["base_url"]
     api_key = vlm_config["api_key"]
@@ -109,17 +109,17 @@ def reasoning_node(state: AgentState) -> AgentState:
         #             break
 
         # Initialize VLM wrapper
-        vllm = GUIOwlWrapper(api_key, base_url, model)
+        # vllm = GUIOwlWrapper(api_key, base_url, model)
 
         # Call VLM
-        output_text, raw_messages, raw_response = vllm.predict_mm(messages)
+        # output_text, raw_messages, raw_response = vllm.predict_mm(messages)
 
         # Parse response for reasoning content
-        llm_response = output_text
+        # llm_response = output_text
 
         # Also get response via direct OpenAI client (fallback path)
         try:
-            client = OpenAI(base_url=base_url, api_key="EMPTY")
+            client = OpenAI(base_url=base_url, api_key=api_key)
             response = client.chat.completions.create(
                 model=model,
                 messages=messages,

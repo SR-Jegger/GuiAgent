@@ -289,6 +289,158 @@ def build_agent_graph() -> StateGraph:
     return builder
 
 
+# ===========================================================================
+# Graph without judge and template match (for simpler tasks)
+# ============================================================================
+def build_agent_graph_simple() -> StateGraph:
+    """
+    Build and return the LangGraph StateGraph for the GUI automation agent.
+
+    Graph structure for multi-step tasks:
+        START -> task_decomposer -> fast_path -> (execution | capture) -> reasoning -> judge -> (execution | template_match)
+                                                                                        -> (next step | END)
+    Nodes:
+        - task_decomposer: Parse multi-step tasks into sub-steps
+        - fast_path: Rule-based quick matching
+        - capture: Screenshot capture
+        - reasoning: VLM-based action planning
+        - x judge: Template match decision
+        - x template_match: Template-based fallback
+        - execution: Action execution
+        - error_handler: Error recovery
+    Conditional edges:
+        - After task_decomposer: -> fast_path
+        - After fast_path: matched -> execution, not matched -> capture
+        - After capture: success -> reasoning, error -> error_handler
+        - After reasoning: success -> judge, stop -> END, error -> error_handler
+        - x After judge: template_match -> template_match, execute -> execution
+        - x After template_match: success -> execution, error -> error_handler
+        - After execution: continue -> (next step or capture), stop -> END, error -> error_handler
+        - After error_handler: retry -> capture, max retries -> END
+    """
+    # Create the graph builder
+    builder = StateGraph(AgentState)
+
+    # Add nodes
+    builder.add_node("task_decomposer", task_decomposer_node)
+    builder.add_node("fast_path", fast_path_node)
+    builder.add_node("capture", capture_node)
+    builder.add_node("reasoning", reasoning_node)
+    builder.add_node("execution", execution_node)
+    builder.add_node("continue_handler", continue_handler)
+    builder.add_node("error_handler", error_handler_node)
+
+    # Set entry point to task_decomposer (parse multi-step tasks first)
+    builder.set_entry_point("task_decomposer")
+
+    # Add conditional edges
+    def fast_path_router(state: AgentState) -> Literal["execution", "capture"]:
+        """Fast Path 路由：匹配成功直接执行，失败则进入 capture->reasoning 流程"""
+        if state.get("fast_path_matched", False):
+            return "execution"
+        return "capture"
+
+    def capture_router(state: AgentState) -> Literal["reasoning", "error_handler"]:
+        if state.get("execution_status") == "success":
+            return "reasoning"
+        return "error_handler"
+
+    def reasoning_router(state: AgentState) -> Literal["END", "execution", "error_handler"]:
+        if state.get("stop_flag"):
+            return "END"
+        elif state.get("execution_status") == "success":
+            return "execution"
+        return "error_handler"
+
+    def execution_router(state: AgentState) -> Literal["continue", "error_handler", "END"]:
+        if state.get("stop_flag"):
+            return "END"
+        if not state.get("sub_flag") and state.get("execution_status") == "success":
+            return "continue_next"
+        if state.get("sub_flag") and state.get("execution_status") == "success":
+            return "continue_current"
+        return "error_handler"
+
+    # Continue Handler -> Fast Path (next sub-step) or Capture (normal flow)
+    def continue_handler_router(state: AgentState) -> Literal["fast_path", "capture"]:
+        sub_steps = state.get("sub_steps", [])
+        current_step_index = state.get("current_step_index", 0)
+        if sub_steps and current_step_index < len(sub_steps):
+            # Has next sub-step, go to fast_path
+            return "fast_path"
+        return "END"
+
+    def error_router(state: AgentState) -> Literal["capture", "end"]:
+        if state.get("stop_flag"):
+            return "end"
+        return "capture"
+
+    # Task Decomposer -> Fast Path
+    builder.add_edge("task_decomposer", "fast_path")
+
+    # Fast Path -> Execution or Capture (fallback)
+    builder.add_conditional_edges(
+        "fast_path",
+        fast_path_router,
+        {
+            "execution": "execution",
+            "capture": "capture",
+        },
+    )
+
+    # Capture -> Reasoning or Error Handler
+    builder.add_conditional_edges(
+        "capture",
+        capture_router,
+        {
+            "reasoning": "reasoning",
+            "error_handler": "error_handler",
+        },
+    )
+
+    # Reasoning -> Judge or END or Error Handler
+    builder.add_conditional_edges(
+        "reasoning",
+        reasoning_router,
+        {
+            "END": "continue_handler", # END
+            "execution": "execution", # Skip judge and template match for simpler tasks
+            "error_handler": "error_handler",
+        },
+    )
+
+    # Execution -> Continue (loop back) or Error Handler or End
+    builder.add_conditional_edges(
+        "execution",
+        execution_router,
+        {
+            "continue_next": "continue_handler",
+            "continue_current": "capture",
+            "error_handler": "error_handler",
+            "END": "continue_handler", # If stop_flag is set, we will route to END which is handled by continue_handler to finalize the task
+        },
+    )
+
+    builder.add_conditional_edges(
+        "continue_handler",
+        continue_handler_router,
+        {
+            "fast_path": "fast_path",
+            "END": END,
+        },
+    )
+
+    # Error Handler -> Retry or End
+    builder.add_conditional_edges(
+        "error_handler",
+        error_router,
+        {
+            "capture": "capture",
+            "end": END,
+        },
+    )
+
+    return builder
 # ============================================================================
 # Agent Runner
 # ============================================================================
@@ -319,7 +471,8 @@ def run_agent(
     print("=" * 60)
 
     # Build and compile the agent graph
-    builder = build_agent_graph()
+    # builder = build_agent_graph()
+    builder = build_agent_graph_simple()  # For simpler tasks without judge/template match
     agent = builder.compile()
 
     # Initialize state
