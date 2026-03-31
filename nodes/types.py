@@ -6,6 +6,7 @@ This module exports the AgentState type and common imports used across nodes.
 
 from typing import Annotated, Any, Optional, Literal
 from typing_extensions import TypedDict
+import asyncio
 
 
 class AgentState(TypedDict, total=False):
@@ -103,3 +104,6 @@ class AgentState(TypedDict, total=False):
     sub_steps: list[dict]  # List of sub-step dicts: [{"step_id": 1, "description": "...", "status": "pending"}, ...]
     current_step_index: int  # Index of current sub-step being executed
     sub_flag: bool  # Whether continue the current sub_step task  or next  sub_step
+
+    # Cancellation support (asyncio.Event is not serializable but works for runtime)
+    stop_event: Optional[Any]  # asyncio.Event for task cancellation

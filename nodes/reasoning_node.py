@@ -40,6 +40,18 @@ def reasoning_node(state: AgentState) -> AgentState:
     Returns:
         Updated state with LLM response and parsed actions
     """
+    # Check for cancellation BEFORE starting any work
+    stop_event = state.get("stop_event")
+    if stop_event and stop_event.is_set():
+        print("\n[REASONING] Task cancelled - exiting early")
+        return {
+            "llm_response": "",
+            "execution_status": "error",
+            "error_message": "Task cancelled",
+            "stop_flag": True,
+            "retry_count": 0,
+        }
+
     step_id = state.get("step_id", 0)
     screenshot_path = state.get("screenshot_path", "")
 
@@ -61,12 +73,12 @@ def reasoning_node(state: AgentState) -> AgentState:
     history = state.get("history", [])
 
     MODEL_CONFIG = state.get("MODEL_CONFIG", None)
-    vlm_config = MODEL_CONFIG["models"]["gui-plus-20260226"]
+    vlm_config = MODEL_CONFIG["models"]["GUI-Owl-1.5-8B"]
     model = vlm_config["model"]
     base_url = vlm_config["base_url"]
     api_key = vlm_config["api_key"]
     FLAG = False
-    current_step_sub_flag = True
+    continue_substep_flag = True  # signal to continue to next sub-step by default
 
     if not screenshot_path or not os.path.exists(screenshot_path):
         return {
@@ -124,6 +136,16 @@ def reasoning_node(state: AgentState) -> AgentState:
                 model=model,
                 messages=messages,
             )
+            # Check for cancellation after LLM call
+            if stop_event and stop_event.is_set():
+                print("\n[REASONING] Task cancelled after LLM call")
+                return {
+                    "llm_response": "",
+                    "execution_status": "error",
+                    "error_message": "Task cancelled",
+                    "stop_flag": True,
+                    "retry_count": 0,
+                }
             # Prepend reasoning content if present
             llm_response = response.choices[0].message.content
             thought = getattr(response.choices[0].message, "reasoning_content", None)
@@ -148,8 +170,9 @@ def reasoning_node(state: AgentState) -> AgentState:
                 #     height=540,
                 # )
                 
-                FLAG = True  # signal to stop
-                current_step_sub_flag = False  # signal to not continue current sub-step
+                # FLAG = True  # signal to stop
+                # current_step_sub_flag = False  # signal to not continue current sub-step
+                continue_substep_flag = False  # signal to not continue to next sub-step
                 print("[REASONING] Stop signal received")
                 break
 
@@ -158,7 +181,7 @@ def reasoning_node(state: AgentState) -> AgentState:
             "messages": messages,
             "execution_status": "success",
             "stop_flag": FLAG,
-            "sub_flag": current_step_sub_flag,
+            "sub_flag": continue_substep_flag,
             "error_message": None,
             "retry_count": 0,
         }

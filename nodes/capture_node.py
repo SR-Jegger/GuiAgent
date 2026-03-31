@@ -28,6 +28,19 @@ def capture_node(state: AgentState) -> AgentState:
     Returns:
         Updated state with screenshot information
     """
+    # Check for cancellation BEFORE starting any work
+    stop_event = state.get("stop_event")
+    if stop_event and stop_event.is_set():
+        print("\n[CAPTURE] Task cancelled - exiting early")
+        return {
+            "step_id": state.get("step_id", 0),
+            "screenshot_path": "",
+            "execution_status": "error",
+            "error_message": "Task cancelled",
+            "stop_flag": True,
+            "retry_count": 0,
+        }
+
     task_name = state.get("task_name", "default")
     step_id = state.get("step_id", 0)
     max_steps = state.get("max_steps", 50)

@@ -39,6 +39,18 @@ def execution_node(state: AgentState) -> AgentState:
     Returns:
         Updated state with execution results
     """
+    # Check for cancellation BEFORE starting any work
+    stop_event = state.get("stop_event")
+    if stop_event and stop_event.is_set():
+        print("\n[EXECUTION] Task cancelled - exiting early")
+        return {
+            "actions": [],
+            "execution_status": "error",
+            "error_message": "Task cancelled",
+            "stop_flag": True,
+            "retry_count": 0,
+        }
+
     step_id = state.get("step_id", 0)
     llm_response = state.get("llm_response", "")
     screenshot_path = state.get("screenshot_path", "")
@@ -97,10 +109,16 @@ def execution_node(state: AgentState) -> AgentState:
     # Execute each action
     stop_flag = False
     executed_actions = []
-    
+
     # 从llm_response 或 fastrule节点 中提取的动作列表action_list
     try:
         for action_id, action in enumerate(action_list):
+            # Check for cancellation before each action
+            if stop_event and stop_event.is_set():
+                print(f"\n[EXECUTION] Task cancelled during action {action_id + 1}")
+                stop_flag = True
+                break
+
             action_parameter = action.get("arguments", {})
             action_type = action_parameter.get("action", "")
             print(f"  [EXECUTION] Action {action_id + 1}: {action_type}")

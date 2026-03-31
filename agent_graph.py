@@ -152,14 +152,19 @@ def build_agent_graph() -> StateGraph:
             return "execution"
         return "capture"
 
-    def capture_router(state: AgentState) -> Literal["reasoning", "error_handler"]:
+    def capture_router(state: AgentState) -> Literal["END", "reasoning", "error_handler"]:
+        """Capture 路由：检查 stop_flag 或 execution_status"""
+        if state.get("stop_flag"):
+            return "END"
         if state.get("execution_status") == "success":
             return "reasoning"
         return "error_handler"
 
-    def reasoning_router(state: AgentState) -> Literal["END", "judge", "error_handler"]:
-        if state.get("stop_flag"):
-            return "END"
+    def reasoning_router(state: AgentState) -> Literal["sub_end", "judge", "error_handler"]:
+        # if state.get("stop_flag"):
+        #     return "END"
+        if not state.get("sub_flag") and state.get("execution_status") == "success":
+            return "sub_end"
         elif state.get("execution_status") == "success":
             return "judge"
         return "error_handler"
@@ -214,11 +219,12 @@ def build_agent_graph() -> StateGraph:
         },
     )
 
-    # Capture -> Reasoning or Error Handler
+    # Capture -> Reasoning or Error Handler or END (stop_flag)
     builder.add_conditional_edges(
         "capture",
         capture_router,
         {
+            "END": END,
             "reasoning": "reasoning",
             "error_handler": "error_handler",
         },
@@ -229,7 +235,7 @@ def build_agent_graph() -> StateGraph:
         "reasoning",
         reasoning_router,
         {
-            "END": "continue_handler", # END
+            "sub_end": "continue_handler", # Sub-step end
             "judge": "judge",
             "error_handler": "error_handler",
         },
@@ -341,14 +347,19 @@ def build_agent_graph_simple() -> StateGraph:
             return "execution"
         return "capture"
 
-    def capture_router(state: AgentState) -> Literal["reasoning", "error_handler"]:
+    def capture_router(state: AgentState) -> Literal["END", "reasoning", "error_handler"]:
+        """Capture 路由：检查 stop_flag 或 execution_status"""
+        if state.get("stop_flag"):
+            return "END"
         if state.get("execution_status") == "success":
             return "reasoning"
         return "error_handler"
 
-    def reasoning_router(state: AgentState) -> Literal["END", "execution", "error_handler"]:
-        if state.get("stop_flag"):
-            return "END"
+    def reasoning_router(state: AgentState) -> Literal["sub_end", "execution", "error_handler"]:
+        # if state.get("stop_flag"):
+        #     return "END"
+        if not state.get("sub_flag") and state.get("execution_status") == "success":
+            return "sub_end"
         elif state.get("execution_status") == "success":
             return "execution"
         return "error_handler"
@@ -390,11 +401,12 @@ def build_agent_graph_simple() -> StateGraph:
         },
     )
 
-    # Capture -> Reasoning or Error Handler
+    # Capture -> Reasoning or Error Handler or END (stop_flag)
     builder.add_conditional_edges(
         "capture",
         capture_router,
         {
+            "END": END,
             "reasoning": "reasoning",
             "error_handler": "error_handler",
         },
@@ -405,7 +417,7 @@ def build_agent_graph_simple() -> StateGraph:
         "reasoning",
         reasoning_router,
         {
-            "END": "continue_handler", # END
+            "sub_end": "continue_handler", # END
             "execution": "execution", # Skip judge and template match for simpler tasks
             "error_handler": "error_handler",
         },
@@ -510,14 +522,16 @@ async def run_agent_async(
         "sub_flag": True,
         "history": [],
         "output_dir": get_output_dir(),
+        "stop_event": stop_event,  # Pass stop_event to state for node-level cancellation check
     }
     final_state = state
     config = {"recursion_limit": 500}
 
     try:
-        # Stream through the graph
-        for event in agent.stream(state, config=config):
-            # Check for cancellation
+        # Use async streaming to allow real-time cancellation checks
+        # agent.astream() is async, so we can check stop_event between events
+        async for event in agent.astream(state, config=config):
+            # Check for cancellation BEFORE processing each event
             if stop_event and stop_event.is_set():
                 print("\n[AGENT] Task cancelled by user")
                 state["stop_flag"] = True
@@ -529,9 +543,19 @@ async def run_agent_async(
                 print(f"  [Node: {node_name}] completed")
                 state.update(node_output)
 
+            # Also check after processing event
             if state.get("stop_flag"):
                 print(f"\n[AGENT] Task completed at step {state.get('step_id', 0)}")
                 # break
+
+            # Check cancellation again after state update
+            if stop_event and stop_event.is_set():
+                print("\n[AGENT] Task cancelled by user (post-event check)")
+                state["stop_flag"] = True
+                state["execution_status"] = "error"
+                state["error_message"] = "Task cancelled"
+                break
+
         final_state = state
         # Check for termination conditions
         if state.get("execution_status") == "error" and state.get("stop_flag"):

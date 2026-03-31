@@ -1,0 +1,25 @@
+# GUI Agent Requirements
+
+# Core dependencies
+langgraph>=0.2.0
+langchain>=0.3.0
+typing_extensions>=4.0.0
+
+# VLM API
+openai>=1.0.0
+
+# GUI automation
+pyautogui>=0.9.54
+pyperclip>=1.8.0
+Pillow>=10.0.0
+
+# Image processing (for template matching)
+opencv-python>=4.8.0
+
+# FastAPI server (for hot-start mode)
+fastapi>=0.109.0
+uvicorn>=0.27.0
+pydantic>=2.0.0
+
+# Optional: for production deployment
+# gunicorn>=21.0.0

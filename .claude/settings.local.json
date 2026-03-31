@@ -3,7 +3,10 @@
     "allow": [
       "Bash(git checkout:*)",
       "Bash(\"E:\\\\automl\\\\AI_project\\\\GuiAgent\\\\utils\\\\parsers.py\")",
-      "Bash(python -m py_compile agent_graph.py)"
+      "Bash(python -m py_compile agent_graph.py)",
+      "Bash(python -c \"import ast; ast.parse\\(open\\(''run_agent.py''\\).read\\(\\)\\)\")",
+      "Bash(python -c \"import ast; ast.parse\\(open\\(''agent_graph.py'', encoding=''utf-8''\\).read\\(\\)\\)\")",
+      "Bash(python:*)"
     ]
   }
 }

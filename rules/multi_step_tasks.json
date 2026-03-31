@@ -35,7 +35,7 @@
       "actions": [
         {
           "type": "left_click",
-          "coordinate": [1090, 570]
+          "coordinate": [1080, 570]
         },
         {
           "type": "type",
