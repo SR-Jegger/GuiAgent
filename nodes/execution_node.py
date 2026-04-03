@@ -21,6 +21,14 @@ from utils.utils import (
     smart_resize,
 )
 
+# Import operation logger for skill learning
+try:
+    from learning import OperationLogger
+    _logger_available = True
+except ImportError:
+    _logger_available = False
+    print("[EXECUTION] Warning: learning module not available, operation logging disabled")
+
 
 def execution_node(state: AgentState) -> AgentState:
     """
@@ -168,6 +176,19 @@ def execution_node(state: AgentState) -> AgentState:
             "actions": executed_actions,
         }
         history.append(history_entry)
+
+        # Log operation for skill learning (only for VLM actions)
+        if _logger_available and executed_actions:
+            try:
+                logger = OperationLogger()
+                logger.log_from_state(
+                    state=state,
+                    actions=executed_actions,
+                    success=True,
+                    source="vlm",
+                )
+            except Exception as e:
+                print(f"[EXECUTION] Warning: Failed to log operation: {e}")
 
         # Small delay to allow UI to update
         time.sleep(2)

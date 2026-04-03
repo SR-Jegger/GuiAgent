@@ -70,19 +70,29 @@ class RuleMatcher:
             rules = data.get("rules", [])
             enabled_rules = [r for r in rules if r.get("enabled", True)]
 
+            # Determine source from filename
+            filename = os.path.basename(filepath)
+            is_learned = filename == "learned_skills.json"
+
             for rule in enabled_rules:
                 # 检查 ID 是否重复
                 if any(r["id"] == rule["id"] for r in self.rules):
                     print(f"[WARN] Duplicate rule ID: {rule['id']}")
                     continue
 
+                # Mark source if not already set
+                if "source" not in rule:
+                    rule["source"] = "learned" if is_learned else "manual"
+
                 self.rules.append(rule)
 
                 # 预编译正则
                 patterns = rule.get("trigger", {}).get("patterns", [])
+                # rules_cache: 建立rule_id -> patterns 的映射关系，方便后续匹配时快速获取对应规则的正则表达式列表
                 self.rules_cache[rule["id"]] = [re.compile(p) for p in patterns]
 
-            print(f"[INFO] Loaded {len(enabled_rules)} rules from {filepath}")
+            source_name = "learned skills" if is_learned else filepath
+            print(f"[INFO] Loaded {len(enabled_rules)} rules from {source_name}")
             return True
         except Exception as e:
             print(f"[ERROR] Failed to load rules from {filepath}: {e}")
@@ -128,7 +138,7 @@ class RuleMatcher:
                 if not any(app in app_context.lower() for app in app_trigger):
                     return None
 
-        # 正则匹配
+        # 在rules_cache中根据rule["id"]获取对应的patterns 进行正则匹配 
         patterns = self.rules_cache.get(rule["id"], [])
         for pattern in patterns:
             match = pattern.search(instruction)
@@ -141,7 +151,7 @@ class RuleMatcher:
         """构建匹配结果"""
         # 提取捕获组
         match_groups = match.groups() if match.groups() else []
-        print(f"[DEBUG] Matched rule '{rule['name']}' with groups: {match_groups}")
+        print(f"[MATCH] Matched rule '{rule['name']}' with groups: {match_groups}")
 
         # 处理动作链中的变量替换
         actions = self._process_action_variables(
@@ -154,6 +164,8 @@ class RuleMatcher:
             "rule_id": rule["id"],
             "rule_name": rule.get("name", rule["id"]),
             "description": rule.get("description", ""),
+            "source": rule.get("source", "manual"),  # manual | learned
+            "confidence": rule.get("confidence", 1.0),  # Confidence score for learned skills
             "actions": actions,
             "match_groups": match_groups,
             "matched_text": match.group(0),
@@ -188,7 +200,7 @@ class RuleMatcher:
                         value = value.replace(f"{{{{match_group_{i}}}}}", group or "")
                     value = value.replace("{{full_match}}", full_match)
                     action_copy[key] = value
-            print(f"[DEBUG] Processed action: {action_copy}")
+            print(f"[MATCH] Processed action: {action_copy}")
             processed.append(action_copy)
 
         return processed

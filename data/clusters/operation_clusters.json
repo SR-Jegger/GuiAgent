@@ -1,0 +1,161 @@
+{
+  "clusters": [
+    {
+      "cluster_id": "cluster_e34bcb32",
+      "pattern": {
+        "instruction_pattern": "在搜索框输入关键词查询.*在搜索框输入关键词查询",
+        "app_context": "React App - 个人 - Microsoft​ Edge Dev",
+        "action_structure": [
+          "left_click",
+          "type"
+        ]
+      },
+      "members": [
+        "test-008-h8i9j0k1",
+        "test-007-g7h8i9j0",
+        "test-006-f6g7h8i9"
+      ],
+      "sample_instructions": [
+        "在搜索框输入关键词查询",
+        "在搜索框输入关键词查询",
+        "在搜索框输入关键词查询"
+      ],
+      "sample_actions": [
+        {
+          "action": "left_click",
+          "coordinate": [
+            498,
+            301
+          ]
+        },
+        {
+          "action": "type",
+          "text": "测试关键词C"
+        },
+        {
+          "action": "left_click",
+          "coordinate": [
+            502,
+            305
+          ]
+        },
+        {
+          "action": "type",
+          "text": "测试关键词B"
+        },
+        {
+          "action": "left_click",
+          "coordinate": [
+            500,
+            300
+          ]
+        },
+        {
+          "action": "type",
+          "text": "测试关键词A"
+        }
+      ],
+      "count": 3,
+      "status": "candidate",
+      "created_at": "2026-04-02T11:31:09.883790",
+      "updated_at": "2026-04-02T11:31:09.883790"
+    },
+    {
+      "cluster_id": "cluster_cbfa24f4",
+      "pattern": {
+        "instruction_pattern": "点击确认按钮提交表单.*点击确认按钮提交表单",
+        "app_context": "React App - 个人 - Microsoft​ Edge Dev",
+        "action_structure": [
+          "left_click"
+        ]
+      },
+      "members": [
+        "test-005-e5f6g7h8",
+        "test-004-d4e5f6g7",
+        "test-003-c3d4e5f6"
+      ],
+      "sample_instructions": [
+        "点击确认按钮提交表单",
+        "点击确认按钮提交表单",
+        "点击确认按钮提交表单"
+      ],
+      "sample_actions": [
+        {
+          "action": "left_click",
+          "coordinate": [
+            1398,
+            902
+          ]
+        },
+        {
+          "action": "left_click",
+          "coordinate": [
+            1405,
+            905
+          ]
+        },
+        {
+          "action": "left_click",
+          "coordinate": [
+            1400,
+            900
+          ]
+        }
+      ],
+      "count": 3,
+      "status": "candidate",
+      "created_at": "2026-04-02T11:31:09.883790",
+      "updated_at": "2026-04-02T11:31:09.883790"
+    },
+    {
+      "cluster_id": "cluster_3ce74492",
+      "pattern": {
+        "instruction_pattern": "双击打开Edge\\ Dev浏览器.*双击打开Edge\\ Dev浏览器",
+        "app_context": "Program Manager",
+        "action_structure": [
+          "double_click"
+        ]
+      },
+      "members": [
+        "test-002-b2c3d4e5",
+        "test-001-a1b2c3d4",
+        "a3bb328d-2d9a-46b5-aa6e-1d316ce0f977"
+      ],
+      "sample_instructions": [
+        "双击打开Edge Dev浏览器",
+        "双击打开Edge Dev浏览器",
+        "双击打开Edge Dev浏览器"
+      ],
+      "sample_actions": [
+        {
+          "action": "double_click",
+          "coordinate": [
+            228,
+            752
+          ]
+        },
+        {
+          "action": "double_click",
+          "coordinate": [
+            230,
+            750
+          ]
+        },
+        {
+          "action": "double_click",
+          "coordinate": [
+            230,
+            751
+          ]
+        }
+      ],
+      "count": 3,
+      "status": "approved",
+      "created_at": "2026-04-02T11:31:09.883790",
+      "updated_at": "2026-04-02T14:01:49.875315",
+      "additionalProp1": {}
+    }
+  ],
+  "last_scan": "2026-04-02T11:31:09.886680",
+  "last_scan_log_id": "test-008-h8i9j0k1"
+}

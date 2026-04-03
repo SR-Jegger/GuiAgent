@@ -76,6 +76,8 @@ def fast_path_node(state: AgentState) -> AgentState:
     if result:
         # Matched: convert rule actions to VLM tool_call format
         rule_actions = result.get("actions", [])
+        rule_source = result.get("source", "manual")
+        rule_confidence = result.get("confidence", 1.0)
         vlm_actions = []
 
         for action in rule_actions:
@@ -101,12 +103,15 @@ def fast_path_node(state: AgentState) -> AgentState:
 
             vlm_actions.append(vlm_action)
 
-        print(f"[FAST_PATH] Matched rule: {result['rule_name']} ({result['rule_id']})")
-        print(f"[FAST_PATH] Converted {len(vlm_actions)} action(s) to VLM format")
+        source_label = "LEARNED" if rule_source == "learned" else "MANUAL"
+        print(f"[FAST_PATH] Matched rule: {result['rule_name']} ({result['rule_id']}) [{source_label}]")
+        print(f"[FAST_PATH] Converted {len(vlm_actions)} action(s) to VLM format (confidence: {rule_confidence})")
 
         return {
             "fast_path_matched": True,
             "actions": vlm_actions,
+            "rule_source": rule_source,  # Track where the rule came from
+            "rule_confidence": rule_confidence,
             "execution_status": "success",
             "tools": tools,  # Pass tools for direct execution
         }

@@ -9,6 +9,7 @@ Usage:
 """
 
 import asyncio
+import os
 import uuid
 import time
 from typing import Optional, Dict, Any
@@ -392,6 +393,184 @@ def create_app() -> FastAPI:
                 if t.status == TaskStatus.RUNNING
             ),
         }
+
+    # ========================================================================
+    # Skill Learning API Endpoints
+    # ========================================================================
+
+    # Import learning modules
+    try:
+        from learning import ClusterEngine, OperationLogger
+        _learning_available = True
+    except ImportError:
+        _learning_available = False
+        print("[SERVER] Warning: learning module not available")
+
+    if _learning_available:
+        # Global cluster engine instance
+        _cluster_engine = ClusterEngine()
+
+        @app.get("/api/v1/skills/candidates")
+        async def list_candidate_skills():
+            """List all candidate skills awaiting approval"""
+            candidates = _cluster_engine.get_candidates()
+            return {
+                "total": len(candidates),
+                "candidates": [
+                    {
+                        "cluster_id": c["cluster_id"],
+                        "pattern": c["pattern"],
+                        "count": c["count"],
+                        "sample_instructions": c.get("sample_instructions", []),
+                        "created_at": c.get("created_at"),
+                    }
+                    for c in candidates
+                ],
+            }
+
+        @app.get("/api/v1/skills/candidates/{cluster_id}")
+        async def get_candidate_skill(cluster_id: str):
+            """Get details of a specific candidate skill"""
+            cluster = _cluster_engine.get_cluster(cluster_id)
+            if not cluster:
+                raise HTTPException(status_code=404, detail="Cluster not found")
+
+            return cluster
+
+        class ApproveRequest(BaseModel):
+            """Request body for approve endpoint"""
+            modifications: Optional[Dict] = None
+
+        @app.post("/api/v1/skills/candidates/{cluster_id}/approve")
+        async def approve_candidate_skill(cluster_id: str, request: ApproveRequest = None):
+            """
+            Approve a candidate skill.
+
+            The skill will be converted to a rule and added to the skill library.
+            """
+            # Get the cluster
+            cluster = _cluster_engine.get_cluster(cluster_id)
+            if not cluster:
+                raise HTTPException(status_code=404, detail="Cluster not found")
+
+            if cluster.get("status") != "candidate":
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Cluster is not a candidate (status: {cluster.get('status')})"
+                )
+
+            # Approve the cluster
+            success = _cluster_engine.approve_cluster(
+                cluster_id,
+                modifications=request.modifications if request else None
+            )
+
+            if not success:
+                raise HTTPException(status_code=500, detail="Failed to approve cluster")
+
+            # Generate skill rule (Phase 4 integration)
+            try:
+                from learning.skill_generator import SkillGenerator
+                generator = SkillGenerator()
+                skill = generator.generate_skill(cluster)
+
+                # Save to learned skills file
+                generator.save_skill(skill)
+
+                return {
+                    "success": True,
+                    "cluster_id": cluster_id,
+                    "skill_id": skill.get("id"),
+                    "message": "Skill approved and added to library",
+                }
+            except Exception as e:
+                print(f"[SERVER] Warning: Could not generate skill: {e}")
+                return {
+                    "success": True,
+                    "cluster_id": cluster_id,
+                    "message": "Cluster approved but skill generation failed",
+                    "error": str(e),
+                }
+
+        class RejectRequest(BaseModel):
+            """Request body for reject endpoint"""
+            reason: str = ""
+
+        @app.post("/api/v1/skills/candidates/{cluster_id}/reject")
+        async def reject_candidate_skill(cluster_id: str, request: RejectRequest = None):
+            """Reject a candidate skill"""
+            success = _cluster_engine.reject_cluster(
+                cluster_id,
+                reason=request.reason if request else ""
+            )
+
+            if not success:
+                raise HTTPException(status_code=404, detail="Cluster not found")
+
+            return {"success": True, "cluster_id": cluster_id}
+
+        @app.post("/api/v1/skills/cluster")
+        async def trigger_clustering(min_cluster_size: int = 3, full_scan: bool = False):
+            """
+            Manually trigger the clustering process.
+
+            This scans operation logs and identifies new candidate skills.
+
+            Args:
+                min_cluster_size: Minimum operations to form a cluster (default: 3)
+                full_scan: If True, scan all logs instead of incremental (default: False)
+            """
+            try:
+                new_clusters = _cluster_engine.scan_and_cluster(min_cluster_size, full_scan)
+                return {
+                    "success": True,
+                    "new_clusters": len(new_clusters),
+                    "scan_type": "full" if full_scan else "incremental",
+                    "clusters": [
+                        {
+                            "cluster_id": c["cluster_id"],
+                            "pattern": c["pattern"],
+                            "count": c["count"],
+                        }
+                        for c in new_clusters
+                    ],
+                }
+            except Exception as e:
+                import traceback
+                error_detail = f"Clustering failed: {e}\n{traceback.format_exc()}"
+                print(f"[SERVER] {error_detail}")
+                raise HTTPException(status_code=500, detail=error_detail)
+
+        @app.get("/api/v1/skills/stats")
+        async def get_skill_stats():
+            """Get statistics about skill learning"""
+            cluster_stats = _cluster_engine.get_stats()
+
+            # Get operation log stats
+            logger = OperationLogger()
+            log_stats = logger.get_stats()
+
+            return {
+                "clusters": cluster_stats,
+                "operations": log_stats,
+            }
+
+        @app.get("/api/v1/skills")
+        async def list_skills():
+            """List all approved skills"""
+            try:
+                import json
+                skills_file = "rules/learned_skills.json"
+                if os.path.exists(skills_file):
+                    with open(skills_file, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                    return {
+                        "total": len(data.get("rules", [])),
+                        "skills": data.get("rules", []),
+                    }
+                return {"total": 0, "skills": []}
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"Failed to load skills: {e}")
 
     return app
 

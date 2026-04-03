@@ -1,0 +1,47 @@
+{
+  "version": "1.0",
+  "description": "Learned skills - auto-generated from VLM operations",
+  "rules": [
+    {
+      "id": "learned_054ceff0",
+      "name": "Program Ma_双击",
+      "description": "Auto-learned skill from 3 operations",
+      "source": "learned",
+      "cluster_id": "cluster_3ce74492",
+      "created_at": "2026-04-02T14:01:49.878619",
+      "trigger": {
+        "patterns": [
+          "双击打开Edge\\\\s*Dev浏览器"
+        ],
+        "app_context": [
+          "Program Manager"
+        ]
+      },
+      "actions": [
+        {
+          "type": "double_click",
+          "coordinate": [
+            228,
+            752
+          ]
+        },
+        {
+          "type": "double_click",
+          "coordinate": [
+            230,
+            750
+          ]
+        },
+        {
+          "type": "double_click",
+          "coordinate": [
+            230,
+            751
+          ]
+        }
+      ],
+      "enabled": true,
+      "confidence": 0.65
+    }
+  ]
+}
