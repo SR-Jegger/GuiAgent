@@ -1,0 +1,976 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GUI Agent Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'cyber': {
+                            50: '#f0fdfa',
+                            100: '#ccfbf1',
+                            200: '#99f6e4',
+                            300: '#5eead4',
+                            400: '#2dd4bf',
+                            500: '#14b8a6',
+                            600: '#0d9488',
+                            700: '#0f766e',
+                            800: '#115e59',
+                            900: '#134e4a',
+                            950: '#042f2e',
+                        },
+                        'purple': {
+                            500: '#a855f7',
+                            600: '#9333ea',
+                            700: '#7e22ce',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@300;400;500;600;700&display=swap');
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);
+        }
+
+        .mono { font-family: 'JetBrains Mono', monospace; }
+
+        .glow {
+            box-shadow: 0 0 20px rgba(20, 184, 166, 0.3);
+        }
+
+        .glow-text {
+            text-shadow: 0 0 10px rgba(20, 184, 166, 0.5);
+        }
+
+        .card {
+            background: rgba(30, 41, 59, 0.8);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(51, 65, 85, 0.5);
+        }
+
+        .status-pending { background: #fbbf24; color: #1e293b; }
+        .status-running { background: #3b82f6; color: white; }
+        .status-completed { background: #10b981; color: white; }
+        .status-failed { background: #ef4444; color: white; }
+        .status-cancelled { background: #6b7280; color: white; }
+
+        .pulse {
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .fade-in {
+            animation: fadeIn 0.3s ease-in-out;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #1e293b;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #475569;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #64748b;
+        }
+
+        .grid-bg {
+            background-image:
+                linear-gradient(rgba(20, 184, 166, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(20, 184, 166, 0.03) 1px, transparent 1px);
+            background-size: 50px 50px;
+        }
+    </style>
+</head>
+<body class="min-h-screen text-slate-200 grid-bg">
+    <div class="flex h-screen">
+        <!-- Sidebar -->
+        <aside class="w-64 bg-slate-900/80 backdrop-blur border-r border-slate-700/50 flex flex-col">
+            <div class="p-6 border-b border-slate-700/50">
+                <h1 class="text-xl font-bold text-cyber-400 glow-text flex items-center gap-2">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+                    </svg>
+                    GUI Agent
+                </h1>
+                <p class="text-xs text-slate-500 mt-1 mono">Dashboard v1.1</p>
+            </div>
+
+            <nav class="flex-1 p-4">
+                <ul class="space-y-2">
+                    <li>
+                        <button onclick="showTab('tasks')" id="nav-tasks" class="nav-btn w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left transition-all hover:bg-slate-800">
+                            <svg class="w-5 h-5 text-cyber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+                            </svg>
+                            <span>任务管理</span>
+                        </button>
+                    </li>
+                    <li>
+                        <button onclick="showTab('candidates')" id="nav-candidates" class="nav-btn w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left transition-all hover:bg-slate-800">
+                            <svg class="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
+                            </svg>
+                            <span>候选技能</span>
+                            <span id="candidate-badge" class="ml-auto bg-amber-500/20 text-amber-400 text-xs px-2 py-0.5 rounded-full hidden">0</span>
+                        </button>
+                    </li>
+                    <li>
+                        <button onclick="showTab('skills')" id="nav-skills" class="nav-btn w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left transition-all hover:bg-slate-800">
+                            <svg class="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z"/>
+                            </svg>
+                            <span>已学技能</span>
+                        </button>
+                    </li>
+                    <li>
+                        <button onclick="showTab('stats')" id="nav-stats" class="nav-btn w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left transition-all hover:bg-slate-800">
+                            <svg class="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                            </svg>
+                            <span>统计</span>
+                        </button>
+                    </li>
+                </ul>
+            </nav>
+
+            <div class="p-4 border-t border-slate-700/50">
+                <div class="card rounded-lg p-3">
+                    <div class="flex items-center gap-2 text-sm">
+                        <span class="w-2 h-2 rounded-full bg-emerald-500 pulse"></span>
+                        <span class="text-slate-400">Server:</span>
+                        <span id="server-status" class="text-emerald-400 mono text-xs">Connected</span>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="flex-1 overflow-auto">
+            <!-- Tasks Tab -->
+            <div id="tab-tasks" class="tab-content p-8">
+                <div class="max-w-6xl mx-auto">
+                    <div class="flex items-center justify-between mb-8">
+                        <h2 class="text-2xl font-bold">任务管理</h2>
+                        <button onclick="refreshTasks()" class="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg transition-colors">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                            </svg>
+                            刷新
+                        </button>
+                    </div>
+
+                    <!-- Create Task Form -->
+                    <div class="card rounded-xl p-6 mb-8 glow">
+                        <h3 class="text-lg font-semibold mb-4 text-cyber-400">创建新任务</h3>
+                        <form id="create-task-form" class="space-y-4">
+                            <div>
+                                <label class="block text-sm text-slate-400 mb-2">任务指令 *</label>
+                                <textarea id="task-instruction" rows="3" class="w-full bg-slate-800 border border-slate-600 rounded-lg px-4 py-3 focus:outline-none focus:border-cyber-500 transition-colors" placeholder="例如：双击打开 Edge 浏览器"></textarea>
+                            </div>
+                            <div class="grid grid-cols-3 gap-4">
+                                <div>
+                                    <label class="block text-sm text-slate-400 mb-2">任务名称</label>
+                                    <input type="text" id="task-name" class="w-full bg-slate-800 border border-slate-600 rounded-lg px-4 py-2 focus:outline-none focus:border-cyber-500" placeholder="default_task">
+                                </div>
+                                <div>
+                                    <label class="block text-sm text-slate-400 mb-2">最大步数</label>
+                                    <input type="number" id="task-max-steps" value="50" class="w-full bg-slate-800 border border-slate-600 rounded-lg px-4 py-2 focus:outline-none focus:border-cyber-500">
+                                </div>
+                                <div>
+                                    <label class="block text-sm text-slate-400 mb-2">最大重试</label>
+                                    <input type="number" id="task-max-retries" value="3" class="w-full bg-slate-800 border border-slate-600 rounded-lg px-4 py-2 focus:outline-none focus:border-cyber-500">
+                                </div>
+                            </div>
+                            <button type="submit" class="w-full bg-cyber-600 hover:bg-cyber-500 text-white font-medium py-3 rounded-lg transition-colors flex items-center justify-center gap-2">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
+                                </svg>
+                                创建任务
+                            </button>
+                        </form>
+                    </div>
+
+                    <!-- Tasks List -->
+                    <div class="card rounded-xl overflow-hidden">
+                        <div class="px-6 py-4 border-b border-slate-700/50 flex items-center justify-between">
+                            <h3 class="font-semibold">任务列表</h3>
+                            <span id="tasks-count" class="text-sm text-slate-400">0 个任务</span>
+                        </div>
+                        <div id="tasks-list" class="divide-y divide-slate-700/50">
+                            <div class="p-8 text-center text-slate-500">
+                                <svg class="w-12 h-12 mx-auto mb-3 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+                                </svg>
+                                暂无任务
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Candidates Tab -->
+            <div id="tab-candidates" class="tab-content p-8 hidden">
+                <div class="max-w-6xl mx-auto">
+                    <div class="flex items-center justify-between mb-8">
+                        <h2 class="text-2xl font-bold">候选技能</h2>
+                        <div class="flex gap-3">
+                            <button onclick="triggerCluster()" class="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg transition-colors">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
+                                </svg>
+                                单操作聚类
+                            </button>
+                            <button onclick="triggerLLMSequenceCluster()" class="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-cyber-600/80 to-cyber-700/80 hover:from-cyber-600 hover:to-cyber-700 text-white rounded-lg transition-all">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"/>
+                                </svg>
+                                LLM序列聚类
+                            </button>
+                            <button onclick="refreshCandidates()" class="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg transition-colors">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                                </svg>
+                                刷新
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Candidates List -->
+                    <div id="candidates-list" class="space-y-4">
+                        <div class="card rounded-xl p-8 text-center text-slate-500">
+                            <svg class="w-12 h-12 mx-auto mb-3 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
+                            </svg>
+                            暂无候选技能
+                        </div>
+                    </div>
+
+                    <!-- LLM聚类参数配置 (可折叠) -->
+                    <details class="card rounded-xl mt-8 border border-slate-700/50">
+                        <summary class="px-6 py-4 cursor-pointer text-slate-400 hover:text-slate-200 transition-colors flex items-center gap-2">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                            </svg>
+                            <span class="text-sm">LLM序列聚类高级参数</span>
+                        </summary>
+                        <div class="px-6 pb-4">
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-xs text-slate-400 mb-1">相似度阈值</label>
+                                    <input type="number" id="llm-similarity-threshold" value="0.7" min="0.5" max="1" step="0.05"
+                                        class="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-sm text-white focus:border-cyber-500 focus:outline-none">
+                                </div>
+                                <div>
+                                    <label class="block text-xs text-slate-400 mb-1">最小聚类大小</label>
+                                    <input type="number" id="llm-min-cluster-size" value="3" min="2" max="10"
+                                        class="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-sm text-white focus:border-cyber-500 focus:outline-none">
+                                </div>
+                            </div>
+                            <div class="mt-3 flex items-center gap-3">
+                                <input type="checkbox" id="llm-use-llm-pattern" checked
+                                    class="w-4 h-4 bg-slate-700 border-slate-600 rounded text-cyber-500 focus:ring-cyber-500">
+                                <label for="llm-use-llm-pattern" class="text-sm text-slate-300">使用 LLM 提取模式 (推荐)</label>
+                            </div>
+                            <div class="mt-2">
+                                <label class="block text-xs text-slate-400 mb-1">LLM 模型</label>
+                                <select id="llm-model" class="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-sm text-white focus:border-cyber-500 focus:outline-none">
+                                    <option value="local_qwen8b">local_qwen8b (本地)</option>
+                                    <option value="gui-plus-20260226">gui-plus (阿里云)</option>
+                                    <option value="gpt4">gpt-4o (OpenAI)</option>
+                                </select>
+                            </div>
+                        </div>
+                    </details>
+                </div>
+            </div>
+
+            <!-- Skills Tab -->
+            <div id="tab-skills" class="tab-content p-8 hidden">
+                <div class="max-w-6xl mx-auto">
+                    <div class="flex items-center justify-between mb-8">
+                        <h2 class="text-2xl font-bold">已学习技能</h2>
+                        <button onclick="refreshSkills()" class="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg transition-colors">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                            </svg>
+                            刷新
+                        </button>
+                    </div>
+
+                    <!-- Skills List -->
+                    <div id="skills-list" class="space-y-4">
+                        <div class="card rounded-xl p-8 text-center text-slate-500">
+                            <svg class="w-12 h-12 mx-auto mb-3 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z"/>
+                            </svg>
+                            暂无已学习技能
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Stats Tab -->
+            <div id="tab-stats" class="tab-content p-8 hidden">
+                <div class="max-w-6xl mx-auto">
+                    <h2 class="text-2xl font-bold mb-8">统计信息</h2>
+
+                    <!-- Stats Cards -->
+                    <div class="grid grid-cols-3 gap-6 mb-8">
+                        <div class="card rounded-xl p-6">
+                            <div class="text-slate-400 text-sm mb-2">总聚类数</div>
+                            <div id="stat-total" class="text-3xl font-bold text-cyber-400 mono">0</div>
+                        </div>
+                        <div class="card rounded-xl p-6">
+                            <div class="text-slate-400 text-sm mb-2">候选</div>
+                            <div id="stat-candidates" class="text-3xl font-bold text-amber-400 mono">0</div>
+                        </div>
+                        <div class="card rounded-xl p-6">
+                            <div class="text-slate-400 text-sm mb-2">已批准</div>
+                            <div id="stat-approved" class="text-3xl font-bold text-emerald-400 mono">0</div>
+                        </div>
+                    </div>
+
+                    <!-- Operations Stats -->
+                    <div class="card rounded-xl p-6">
+                        <h3 class="font-semibold mb-4">操作日志统计</h3>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <span class="text-slate-400">总日志数:</span>
+                                <span id="stat-logs" class="ml-2 mono">0</span>
+                            </div>
+                            <div>
+                                <span class="text-slate-400">最后扫描:</span>
+                                <span id="stat-last-scan" class="ml-2 mono text-sm">-</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Toast Container -->
+    <div id="toast-container" class="fixed top-4 right-4 z-50 space-y-2"></div>
+
+    <!-- Candidate Detail Modal -->
+    <div id="candidate-modal" class="fixed inset-0 bg-black/50 backdrop-blur-sm hidden items-center justify-center z-40">
+        <div class="card rounded-xl w-full max-w-2xl max-h-[80vh] overflow-auto m-4">
+            <div class="p-6 border-b border-slate-700/50 flex items-center justify-between">
+                <h3 class="text-lg font-semibold">候选技能详情</h3>
+                <button onclick="closeModal()" class="text-slate-400 hover:text-white">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                </button>
+            </div>
+            <div id="modal-content" class="p-6">
+                <!-- Dynamic content -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Skill Detail Modal -->
+    <div id="skill-modal" class="fixed inset-0 bg-black/50 backdrop-blur-sm hidden items-center justify-center z-40">
+        <div class="card rounded-xl w-full max-w-3xl max-h-[85vh] overflow-auto m-4">
+            <div class="p-6 border-b border-slate-700/50 flex items-center justify-between sticky top-0 bg-slate-800/95 backdrop-blur">
+                <h3 class="text-lg font-semibold text-cyber-400">技能详情</h3>
+                <button onclick="closeSkillModal()" class="text-slate-400 hover:text-white">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                </button>
+            </div>
+            <div id="skill-modal-content" class="p-6">
+                <!-- Dynamic content -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = '/api/v1';
+        let refreshInterval = null;
+
+        // ==================== Navigation ====================
+        function showTab(tabName) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+            document.querySelectorAll('.nav-btn').forEach(el => el.classList.remove('bg-slate-800', 'text-cyber-400'));
+
+            document.getElementById(`tab-${tabName}`).classList.remove('hidden');
+            document.getElementById(`nav-${tabName}`).classList.add('bg-slate-800', 'text-cyber-400');
+
+            // Refresh data
+            switch(tabName) {
+                case 'tasks': refreshTasks(); break;
+                case 'candidates': refreshCandidates(); break;
+                case 'skills': refreshSkills(); break;
+                case 'stats': refreshStats(); break;
+            }
+        }
+
+        // ==================== API Calls ====================
+        async function api(method, path, data = null) {
+            const options = {
+                method,
+                headers: { 'Content-Type': 'application/json' }
+            };
+            if (data) options.body = JSON.stringify(data);
+
+            const response = await fetch(`${API_BASE}${path}`, options);
+            if (!response.ok) {
+                const error = await response.json().catch(() => ({ detail: 'Request failed' }));
+                throw new Error(error.detail || 'Request failed');
+            }
+            return response.json();
+        }
+
+        // ==================== Tasks ====================
+        async function refreshTasks() {
+            try {
+                const data = await api('GET', '/tasks');
+                renderTasks(data);
+            } catch (e) {
+                showToast('获取任务列表失败：' + e.message, 'error');
+            }
+        }
+
+        function renderTasks(tasks) {
+            const container = document.getElementById('tasks-list');
+            document.getElementById('tasks-count').textContent = `${tasks.length} 个任务`;
+
+            if (tasks.length === 0) {
+                container.innerHTML = `
+                    <div class="p-8 text-center text-slate-500">
+                        <svg class="w-12 h-12 mx-auto mb-3 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+                        </svg>
+                        暂无任务
+                    </div>`;
+                return;
+            }
+
+            container.innerHTML = tasks.map(task => `
+                <div class="p-4 hover:bg-slate-800/50 transition-colors fade-in">
+                    <div class="flex items-center justify-between">
+                        <div class="flex-1">
+                            <div class="flex items-center gap-3">
+                                <span class="status-${task.status} text-xs px-2 py-1 rounded-full font-medium">${task.status}</span>
+                                <span class="mono text-sm text-slate-400">${task.task_id.slice(0, 8)}...</span>
+                            </div>
+                            <div class="mt-2 text-sm text-slate-300">${task.result?.final_state?.output_dir || '-'}</div>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            ${task.status === 'pending' || task.status === 'running' ? `
+                                <button onclick="cancelTask('${task.task_id}')" class="px-3 py-1 bg-red-600/20 text-red-400 hover:bg-red-600/30 rounded text-sm transition-colors">取消</button>
+                            ` : ''}
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        async function createTask(e) {
+            e.preventDefault();
+            const instruction = document.getElementById('task-instruction').value.trim();
+            if (!instruction) {
+                showToast('请输入任务指令', 'error');
+                return;
+            }
+
+            const data = {
+                instruction,
+                task_name: document.getElementById('task-name').value || 'default_task',
+                max_steps: parseInt(document.getElementById('task-max-steps').value) || 50,
+                max_retries: parseInt(document.getElementById('task-max-retries').value) || 3
+            };
+
+            try {
+                await api('POST', '/tasks', data);
+                showToast('任务创建成功', 'success');
+                document.getElementById('task-instruction').value = '';
+                refreshTasks();
+            } catch (e) {
+                showToast('创建任务失败：' + e.message, 'error');
+            }
+        }
+
+        async function cancelTask(taskId) {
+            try {
+                await api('POST', `/tasks/${taskId}/cancel`);
+                showToast('任务已取消', 'success');
+                refreshTasks();
+            } catch (e) {
+                showToast('取消失败：' + e.message, 'error');
+            }
+        }
+
+        // ==================== Candidates ====================
+        async function refreshCandidates() {
+            try {
+                const data = await api('GET', '/skills/candidates');
+                renderCandidates(data.candidates || []);
+                document.getElementById('candidate-badge').textContent = data.total || 0;
+                document.getElementById('candidate-badge').classList.toggle('hidden', !data.total);
+            } catch (e) {
+                showToast('获取候选技能失败：' + e.message, 'error');
+            }
+        }
+
+        function renderCandidates(candidates) {
+            const container = document.getElementById('candidates-list');
+
+            if (candidates.length === 0) {
+                container.innerHTML = `
+                    <div class="card rounded-xl p-8 text-center text-slate-500">
+                        <svg class="w-12 h-12 mx-auto mb-3 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
+                        </svg>
+                        暂无候选技能
+                    </div>`;
+                return;
+            }
+
+            container.innerHTML = candidates.map(c => {
+                const isSequence = c.cluster_id && c.cluster_id.startsWith('cluster_seq');
+                const typeLabel = isSequence ? '序列技能' : '单操作';
+                const typeColor = isSequence ? 'bg-cyber-500/20 text-cyber-400' : 'bg-slate-500/20 text-slate-400';
+                const actionStruct = c.pattern?.action_structure || [];
+
+                return `
+                <div class="card rounded-xl p-6 hover:border-cyber-500/50 transition-colors fade-in">
+                    <div class="flex items-start justify-between">
+                        <div class="flex-1">
+                            <div class="flex items-center gap-3 mb-2">
+                                <span class="mono text-cyber-400">${c.cluster_id}</span>
+                                <span class="${typeColor} text-xs px-2 py-1 rounded-full">${typeLabel}</span>
+                                <span class="bg-amber-500/20 text-amber-400 text-xs px-2 py-1 rounded-full">候选</span>
+                            </div>
+                            <div class="text-sm text-slate-300 mb-2">${c.pattern?.instruction_pattern || c.pattern || '-'}</div>
+                            <div class="flex items-center gap-4 text-xs text-slate-500">
+                                <span>操作序列：[${actionStruct.join(' → ') || '-'}]</span>
+                                <span>执行次数：${c.count}</span>
+                            </div>
+                        </div>
+                        <div class="flex gap-2">
+                            <button onclick="showCandidateDetail('${c.cluster_id}')" class="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 rounded text-sm transition-colors">详情</button>
+                            <button onclick="approveCandidate('${c.cluster_id}')" class="px-3 py-1.5 bg-emerald-600/20 text-emerald-400 hover:bg-emerald-600/30 rounded text-sm transition-colors">批准</button>
+                            <button onclick="rejectCandidate('${c.cluster_id}')" class="px-3 py-1.5 bg-red-600/20 text-red-400 hover:bg-red-600/30 rounded text-sm transition-colors">拒绝</button>
+                        </div>
+                    </div>
+                </div>
+            `}).join('');
+        }
+
+        async function showCandidateDetail(clusterId) {
+            try {
+                const data = await api('GET', `/skills/candidates/${clusterId}`);
+                const content = document.getElementById('modal-content');
+                const isSequence = data.cluster_id && data.cluster_id.startsWith('cluster_seq');
+
+                // Build sequence display if available
+                let sequencesHtml = '';
+                if (isSequence && data.sample_sequences && data.sample_sequences.length > 0) {
+                    sequencesHtml = `
+                        <div>
+                            <label class="text-slate-400 text-sm">操作序列示例</label>
+                            <div class="mt-2 space-y-3">
+                                ${data.sample_sequences.map((seq, idx) => `
+                                    <div class="bg-slate-800/50 rounded-lg p-3">
+                                        <div class="text-xs text-slate-500 mb-2">序列 ${idx + 1}: ${seq.instruction || ''}</div>
+                                        <div class="flex flex-wrap gap-2">
+                                            ${(seq.actions || []).map((a, i) => `
+                                                <div class="flex items-center gap-1 bg-slate-700 px-2 py-1 rounded text-sm">
+                                                    <span class="text-cyber-400">${i + 1}.</span>
+                                                    <span>${a.type || a.action}</span>
+                                                    ${a.coordinate ? `<span class="text-slate-400 text-xs">[${a.coordinate.join(',')}]</span>` : ''}
+                                                    ${a.text ? `<span class="text-emerald-400 text-xs">"${a.text.substring(0, 20)}${a.text.length > 20 ? '...' : ''}"</span>` : ''}
+                                                </div>
+                                            `).join('')}
+                                        </div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    `;
+                }
+
+                content.innerHTML = `
+                    <div class="space-y-4">
+                        <div class="flex items-center gap-3">
+                            <span class="mono text-cyber-400">${data.cluster_id}</span>
+                            ${isSequence ? '<span class="bg-cyber-500/20 text-cyber-400 text-xs px-2 py-1 rounded-full">序列技能</span>' : '<span class="bg-slate-500/20 text-slate-400 text-xs px-2 py-1 rounded-full">单操作</span>'}
+                        </div>
+                        <div>
+                            <label class="text-slate-400 text-sm">触发模式</label>
+                            <code class="block bg-slate-800 px-3 py-2 rounded text-sm mono mt-1">${data.pattern?.instruction_pattern || '-'}</code>
+                        </div>
+                        <div>
+                            <label class="text-slate-400 text-sm">操作结构</label>
+                            <div class="flex gap-2 mt-1">
+                                ${(data.pattern?.action_structure || []).map(a => `
+                                    <span class="bg-slate-700 px-3 py-1 rounded text-sm">${a}</span>
+                                `).join('')}
+                            </div>
+                        </div>
+                        <div>
+                            <label class="text-slate-400 text-sm">应用上下文</label>
+                            <div class="text-sm mt-1">${data.pattern?.app_context || '-'}</div>
+                        </div>
+                        <div>
+                            <label class="text-slate-400 text-sm">示例指令</label>
+                            <ul class="mt-1 space-y-1">
+                                ${(data.sample_instructions || []).map(s => `<li class="text-sm bg-slate-800 px-3 py-2 rounded">${s}</li>`).join('')}
+                            </ul>
+                        </div>
+                        ${sequencesHtml}
+                        ${!isSequence ? `
+                        <div>
+                            <label class="text-slate-400 text-sm">示例动作</label>
+                            <div class="mono text-xs bg-slate-800 p-2 rounded max-h-40 overflow-auto">${JSON.stringify(data.sample_actions || [], null, 2)}</div>
+                        </div>
+                        ` : ''}
+                        <div class="flex gap-3 pt-4">
+                            <button onclick="approveCandidate('${clusterId}'); closeModal();" class="flex-1 py-2 bg-emerald-600 hover:bg-emerald-500 rounded font-medium transition-colors">批准</button>
+                            <button onclick="rejectCandidate('${clusterId}'); closeModal();" class="flex-1 py-2 bg-red-600 hover:bg-red-500 rounded font-medium transition-colors">拒绝</button>
+                        </div>
+                    </div>
+                `;
+
+                document.getElementById('candidate-modal').classList.remove('hidden');
+                document.getElementById('candidate-modal').classList.add('flex');
+            } catch (e) {
+                showToast('获取详情失败：' + e.message, 'error');
+            }
+        }
+
+        function closeModal() {
+            document.getElementById('candidate-modal').classList.add('hidden');
+            document.getElementById('candidate-modal').classList.remove('flex');
+        }
+
+        async function approveCandidate(clusterId) {
+            try {
+                await api('POST', `/skills/candidates/${clusterId}/approve`);
+                showToast('技能已批准', 'success');
+                refreshCandidates();
+            } catch (e) {
+                showToast('批准失败：' + e.message, 'error');
+            }
+        }
+
+        async function rejectCandidate(clusterId) {
+            try {
+                await api('POST', `/skills/candidates/${clusterId}/reject`, { reason: '' });
+                showToast('技能已拒绝', 'success');
+                refreshCandidates();
+            } catch (e) {
+                showToast('拒绝失败：' + e.message, 'error');
+            }
+        }
+
+        async function triggerCluster() {
+            try {
+                const data = await api('POST', '/skills/cluster');
+                showToast(`单操作聚类完成，发现 ${data.new_clusters} 个新聚类`, 'success');
+                refreshCandidates();
+            } catch (e) {
+                showToast('聚类失败：' + e.message, 'error');
+            }
+        }
+
+        async function triggerLLMSequenceCluster() {
+            try {
+                // 读取参数
+                const similarityThreshold = parseFloat(document.getElementById('llm-similarity-threshold').value) || 0.75;
+                const minClusterSize = parseInt(document.getElementById('llm-min-cluster-size').value) || 2;
+                const useLlmPattern = document.getElementById('llm-use-llm-pattern').checked;
+                const llmModel = document.getElementById('llm-model').value;
+
+                showToast('正在执行 LLM 序列聚类...', 'info');
+
+                const data = await api('POST', `/skills/cluster/sequences/llm?similarity_threshold=${similarityThreshold}&min_cluster_size=${minClusterSize}&use_llm_pattern=${useLlmPattern}&llm_model=${llmModel}`);
+
+                if (data.success) {
+                    let msg = `LLM 序列聚类完成，发现 ${data.new_clusters} 个新聚类`;
+                    if (data.parameters.use_llm_pattern) {
+                        msg += ` (使用 ${data.parameters.llm_model} 提取模式)`;
+                    }
+                    showToast(msg, 'success');
+                }
+                refreshCandidates();
+            } catch (e) {
+                showToast('LLM 序列聚类失败：' + e.message, 'error');
+            }
+        }
+
+        // ==================== Skills ====================
+        async function refreshSkills() {
+            try {
+                const data = await api('GET', '/skills');
+                renderSkills(data.skills || []);
+            } catch (e) {
+                showToast('获取技能列表失败：' + e.message, 'error');
+            }
+        }
+
+        function renderSkills(skills) {
+            const container = document.getElementById('skills-list');
+
+            if (skills.length === 0) {
+                container.innerHTML = `
+                    <div class="card rounded-xl p-8 text-center text-slate-500">
+                        <svg class="w-12 h-12 mx-auto mb-3 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z"/>
+                        </svg>
+                        暂无已学习技能
+                    </div>`;
+                return;
+            }
+
+            container.innerHTML = skills.map(s => `
+                <div class="card rounded-xl p-6 fade-in">
+                    <div class="flex items-center justify-between">
+                        <div class="flex-1 cursor-pointer" onclick="showSkillDetail(${JSON.stringify(s).replace(/"/g, '&quot;')})">
+                            <div class="flex items-center gap-3 mb-2">
+                                <span class="font-medium">${s.name || s.id}</span>
+                                <span class="text-xs text-slate-500 mono">${s.id}</span>
+                            </div>
+                            <div class="text-sm text-slate-400">${s.description || '-'}</div>
+                            <div class="mt-2 text-xs text-slate-500">置信度：${(s.confidence * 100).toFixed(0)}%</div>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <!-- Detail Button -->
+                            <button onclick="showSkillDetail(${JSON.stringify(s).replace(/"/g, '&quot;')})" class="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 rounded text-sm transition-colors">详情</button>
+                            <!-- Toggle Switch -->
+                            <label class="relative inline-flex items-center cursor-pointer" title="${s.enabled ? '点击禁用' : '点击启用'}">
+                                <input type="checkbox" class="sr-only peer" ${s.enabled ? 'checked' : ''} onchange="toggleSkill('${s.id}', this.checked)">
+                                <div class="w-11 h-6 bg-slate-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
+                            </label>
+                            <!-- Delete Button -->
+                            <button onclick="deleteSkill('${s.id}')" class="p-2 text-slate-400 hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-colors" title="删除技能">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function showSkillDetail(skill) {
+            const modal = document.getElementById('skill-modal');
+            const content = document.getElementById('skill-modal-content');
+
+            content.innerHTML = `
+                <div class="space-y-6">
+                    <!-- Basic Info -->
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="text-slate-400 text-xs uppercase tracking-wider">ID</label>
+                            <div class="mono text-cyber-400 mt-1">${skill.id}</div>
+                        </div>
+                        <div>
+                            <label class="text-slate-400 text-xs uppercase tracking-wider">名称</label>
+                            <div class="mt-1">${skill.name || '-'}</div>
+                        </div>
+                        <div>
+                            <label class="text-slate-400 text-xs uppercase tracking-wider">来源</label>
+                            <div class="mt-1">${skill.source || '-'}</div>
+                        </div>
+                        <div>
+                            <label class="text-slate-400 text-xs uppercase tracking-wider">状态</label>
+                            <div class="mt-1">
+                                <span class="${skill.enabled ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-500/20 text-slate-400'} text-xs px-2 py-1 rounded-full">${skill.enabled ? '启用' : '禁用'}</span>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="text-slate-400 text-xs uppercase tracking-wider">置信度</label>
+                            <div class="mt-1 flex items-center gap-2">
+                                <div class="flex-1 h-2 bg-slate-700 rounded-full overflow-hidden">
+                                    <div class="h-full bg-gradient-to-r from-cyber-500 to-emerald-500" style="width: ${(skill.confidence || 0) * 100}%"></div>
+                                </div>
+                                <span class="mono text-sm">${((skill.confidence || 0) * 100).toFixed(0)}%</span>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="text-slate-400 text-xs uppercase tracking-wider">创建时间</label>
+                            <div class="mt-1 text-sm">${skill.created_at ? new Date(skill.created_at).toLocaleString() : '-'}</div>
+                        </div>
+                        <div>
+                            <label class="text-slate-400 text-xs uppercase tracking-wider">来源聚类</label>
+                            <div class="mono text-sm mt-1">${skill.cluster_id || '-'}</div>
+                        </div>
+                    </div>
+
+                    <!-- Description -->
+                    <div>
+                        <label class="text-slate-400 text-xs uppercase tracking-wider">描述</label>
+                        <div class="mt-1 text-sm bg-slate-800/50 p-3 rounded-lg">${skill.description || '-'}</div>
+                    </div>
+
+                    <!-- Trigger -->
+                    <div>
+                        <label class="text-slate-400 text-xs uppercase tracking-wider">触发条件</label>
+                        <div class="mt-2 space-y-3">
+                            ${skill.trigger?.patterns?.length ? `
+                                <div>
+                                    <div class="text-xs text-slate-500 mb-1">匹配模式</div>
+                                    <div class="space-y-1">
+                                        ${skill.trigger.patterns.map(p => `<code class="block bg-slate-800 px-3 py-2 rounded text-sm mono text-cyber-300">${p}</code>`).join('')}
+                                    </div>
+                                </div>
+                            ` : ''}
+                            ${skill.trigger?.app_context?.length ? `
+                                <div>
+                                    <div class="text-xs text-slate-500 mb-1">应用上下文</div>
+                                    <div class="space-y-1">
+                                        ${skill.trigger.app_context.map(a => `<span class="inline-block bg-slate-700 px-3 py-1 rounded text-sm">${a}</span>`).join('')}
+                                    </div>
+                                </div>
+                            ` : ''}
+                        </div>
+                    </div>
+
+                    <!-- Actions -->
+                    <div>
+                        <label class="text-slate-400 text-xs uppercase tracking-wider">动作序列 (${skill.actions?.length || 0} 步)</label>
+                        <div class="mt-2 space-y-2 max-h-60 overflow-auto">
+                            ${(skill.actions || []).map((a, i) => `
+                                <div class="flex items-center gap-3 bg-slate-800/50 p-3 rounded-lg">
+                                    <span class="w-6 h-6 flex items-center justify-center bg-slate-700 rounded text-xs">${i + 1}</span>
+                                    <span class="text-cyber-400 font-medium">${a.type}</span>
+                                    ${a.coordinate ? `<span class="mono text-sm text-slate-400">[${a.coordinate.join(', ')}]</span>` : ''}
+                                    ${a.text ? `<span class="text-sm text-slate-300">"${a.text}"</span>` : ''}
+                                    ${a.keys ? `<span class="mono text-sm text-slate-400">[${a.keys.join(', ')}]</span>` : ''}
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+
+                    <!-- Raw JSON -->
+                    <details class="bg-slate-800/30 rounded-lg">
+                        <summary class="px-4 py-3 cursor-pointer text-slate-400 hover:text-slate-200 transition-colors">原始 JSON</summary>
+                        <pre class="p-4 text-xs mono overflow-auto max-h-60">${JSON.stringify(skill, null, 2)}</pre>
+                    </details>
+                </div>
+            `;
+
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        function closeSkillModal() {
+            document.getElementById('skill-modal').classList.add('hidden');
+            document.getElementById('skill-modal').classList.remove('flex');
+        }
+
+        async function toggleSkill(skillId, enabled) {
+            try {
+                await api('PATCH', `/skills/${skillId}`, { enabled });
+                showToast(enabled ? '技能已启用' : '技能已禁用', 'success');
+                refreshSkills();
+            } catch (e) {
+                showToast('更新失败：' + e.message, 'error');
+                refreshSkills(); // Reset UI on error
+            }
+        }
+
+        async function deleteSkill(skillId) {
+            if (!confirm('确定要删除此技能吗？此操作不可撤销。')) return;
+
+            try {
+                await api('DELETE', `/skills/${skillId}`);
+                showToast('技能已删除', 'success');
+                refreshSkills();
+            } catch (e) {
+                showToast('删除失败：' + e.message, 'error');
+            }
+        }
+
+        // ==================== Stats ====================
+        async function refreshStats() {
+            try {
+                const data = await api('GET', '/skills/stats');
+                document.getElementById('stat-total').textContent = data.clusters?.total_clusters || 0;
+                document.getElementById('stat-candidates').textContent = data.clusters?.candidates || 0;
+                document.getElementById('stat-approved').textContent = data.clusters?.approved || 0;
+                document.getElementById('stat-logs').textContent = data.operations?.total_logs || 0;
+                document.getElementById('stat-last-scan').textContent = data.clusters?.last_scan ? new Date(data.clusters.last_scan).toLocaleString() : '-';
+            } catch (e) {
+                showToast('获取统计失败：' + e.message, 'error');
+            }
+        }
+
+        // ==================== Toast ====================
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toast-container');
+            const colors = {
+                success: 'bg-emerald-600',
+                error: 'bg-red-600',
+                info: 'bg-blue-600'
+            };
+
+            const toast = document.createElement('div');
+            toast.className = `${colors[type]} text-white px-4 py-3 rounded-lg shadow-lg fade-in flex items-center gap-2`;
+            toast.innerHTML = `
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    ${type === 'success' ? '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>' : ''}
+                    ${type === 'error' ? '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>' : ''}
+                    ${type === 'info' ? '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>' : ''}
+                </svg>
+                ${message}
+            `;
+
+            container.appendChild(toast);
+            setTimeout(() => toast.remove(), 3000);
+        }
+
+        // ==================== Init ====================
+        document.getElementById('create-task-form').addEventListener('submit', createTask);
+
+        // Close modals on outside click
+        document.getElementById('candidate-modal').addEventListener('click', (e) => {
+            if (e.target.id === 'candidate-modal') closeModal();
+        });
+        document.getElementById('skill-modal').addEventListener('click', (e) => {
+            if (e.target.id === 'skill-modal') closeSkillModal();
+        });
+
+        // Show tasks tab on load
+        showTab('tasks');
+
+        // Auto refresh
+        setInterval(() => {
+            const activeTab = document.querySelector('.tab-content:not(.hidden)');
+            if (activeTab?.id === 'tab-tasks') refreshTasks();
+        }, 5000);
+    </script>
+</body>
+</html>
