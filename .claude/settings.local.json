@@ -9,5 +9,8 @@
       "Bash(python:*)",
       "Bash(pip install:*)"
     ]
+  },
+  "python": {
+    "path": "E:\\Anaconda\\envs\\sam2\\python.exe"
   }
 }

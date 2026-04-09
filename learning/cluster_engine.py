@@ -111,6 +111,16 @@ class ClusterEngine:
         ]
         print(f"[ClusterEngine] {len(vlm_new_logs)} new VLM operations, {len(vlm_all_logs)} total VLM operations")
 
+        # Filter out sequence operations (handled by LLM sequence clustering)
+        from learning.similarity import is_sequence_operation
+        sequence_log_ids = self._identify_sequence_operations(vlm_all_logs, is_sequence_operation)
+        print(f"[ClusterEngine] {len(sequence_log_ids)} logs belong to sequence operations (will be skipped)")
+
+        # Exclude sequence operation logs from single-operation clustering
+        vlm_all_logs = [log for log in vlm_all_logs if log.get("log_id") not in sequence_log_ids]
+        vlm_new_logs = [log for log in vlm_new_logs if log.get("log_id") not in sequence_log_ids]
+        print(f"[ClusterEngine] {len(vlm_all_logs)} single-operation logs to cluster")
+
         # Track which logs are already in clusters
         clustered_log_ids = set()
         for cluster in self.clusters.get("clusters", []):
@@ -126,10 +136,6 @@ class ClusterEngine:
         # Step 1: Try to add NEW logs to existing clusters (incremental update)
         added_to_existing = 0
         for cluster in self.clusters.get("clusters", []):
-            # Only update non-rejected clusters
-            if cluster.get("status") == "rejected":
-                continue
-
             cluster_pattern = cluster.get("pattern", {})
             cluster_members = cluster.get("members", [])
 
@@ -333,13 +339,54 @@ class ClusterEngine:
             "updated_at": now,
         }
 
+    def _identify_sequence_operations(
+        self,
+        logs: list[dict],
+        is_sequence_fn
+    ) -> set:
+        """
+        Identify logs that belong to sequence operations.
+
+        Groups logs by (instruction_hash, task_name) and determines if
+        each group represents a sequence operation.
+
+        Args:
+            logs: List of operation logs
+            is_sequence_fn: Function to check if a group is a sequence operation
+
+        Returns:
+            Set of log_ids that belong to sequence operations
+        """
+        # Group by (instruction_hash, task_name)
+        groups = {}
+        for log in logs:
+            key = (log.get("instruction_hash", ""), log.get("task_name", ""))
+            if key not in groups:
+                groups[key] = []
+            groups[key].append(log)
+
+        # Identify sequence operation logs
+        sequence_log_ids = set()
+        for key, group_logs in groups.items():
+            if is_sequence_fn(group_logs):
+                # All logs in this group belong to a sequence operation
+                for log in group_logs:
+                    sequence_log_ids.add(log.get("log_id"))
+
+        return sequence_log_ids
+
     def get_candidates(self) -> list[dict]:
         """
         Get all candidate clusters awaiting approval.
 
+        Reloads from file to ensure sync with external changes.
+
         Returns:
             List of candidate clusters
         """
+        # Reload from file to sync with any external changes
+        self.clusters = self._load_clusters()
+
         return [
             c for c in self.clusters.get("clusters", [])
             if c.get("status") == "candidate"
@@ -349,12 +396,17 @@ class ClusterEngine:
         """
         Get a specific cluster by ID.
 
+        Reloads from file to ensure sync with external changes.
+
         Args:
             cluster_id: Cluster ID
 
         Returns:
             Cluster dict or None if not found
         """
+        # Reload from file to sync with any external changes
+        self.clusters = self._load_clusters()
+
         for cluster in self.clusters.get("clusters", []):
             if cluster.get("cluster_id") == cluster_id:
                 return cluster
@@ -394,11 +446,14 @@ class ClusterEngine:
 
     def reject_cluster(self, cluster_id: str, reason: str = "") -> bool:
         """
-        Reject a candidate cluster.
+        Reject a candidate cluster by removing it from the clusters list.
+
+        Unlike the previous implementation that marked clusters as "rejected",
+        this directly deletes them to avoid accumulating zombie data.
 
         Args:
             cluster_id: Cluster ID
-            reason: Reason for rejection
+            reason: Reason for rejection (logged but not stored)
 
         Returns:
             True if rejected successfully
@@ -408,12 +463,19 @@ class ClusterEngine:
             print(f"[ClusterEngine] Cluster not found: {cluster_id}")
             return False
 
-        cluster["status"] = "rejected"
-        cluster["rejection_reason"] = reason
-        cluster["updated_at"] = datetime.now().isoformat()
+        # Log the rejection reason
+        if reason:
+            print(f"[ClusterEngine] Rejected cluster {cluster_id}: {reason}")
+        else:
+            print(f"[ClusterEngine] Rejected cluster: {cluster_id}")
+
+        # Remove the cluster entirely (don't keep rejected status)
+        self.clusters["clusters"] = [
+            c for c in self.clusters.get("clusters", [])
+            if c.get("cluster_id") != cluster_id
+        ]
 
         self._save_clusters()
-        print(f"[ClusterEngine] Rejected cluster: {cluster_id}")
 
         return True
 
@@ -430,26 +492,5 @@ class ClusterEngine:
             "total_clusters": len(clusters),
             "candidates": sum(1 for c in clusters if c.get("status") == "candidate"),
             "approved": sum(1 for c in clusters if c.get("status") == "approved"),
-            "rejected": sum(1 for c in clusters if c.get("status") == "rejected"),
             "last_scan": self.clusters.get("last_scan"),
         }
-
-    def clear_rejected(self) -> int:
-        """
-        Remove all rejected clusters.
-
-        Returns:
-            Number of clusters removed
-        """
-        original_count = len(self.clusters.get("clusters", []))
-        self.clusters["clusters"] = [
-            c for c in self.clusters.get("clusters", [])
-            if c.get("status") != "rejected"
-        ]
-        removed = original_count - len(self.clusters["clusters"])
-
-        if removed > 0:
-            self._save_clusters()
-            print(f"[ClusterEngine] Removed {removed} rejected clusters")
-
-        return removed

@@ -21,5 +21,9 @@ fastapi>=0.109.0
 uvicorn>=0.27.0
 pydantic>=2.0.0
 
+# LLM-enhanced clustering
+sentence-transformers>=2.2.0
+scikit-learn>=1.3.0
+
 # Optional: for production deployment
 # gunicorn>=21.0.0

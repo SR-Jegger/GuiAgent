@@ -12,17 +12,81 @@ import asyncio
 import os
 import uuid
 import time
-from typing import Optional, Dict, Any
+import json
+from typing import Optional, Dict, Any, List
 from enum import Enum
 
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
 from agent_graph import build_agent_graph_simple, run_agent_async, AgentState
 from utils.utils import get_output_dir
+
+
+# ============================================================================
+# Helper Functions for LLM Skill Learning
+# ============================================================================
+
+def _save_llm_clusters(clusters: List[Dict]) -> None:
+    """Save LLM-generated clusters to file."""
+    clusters_dir = "data/clusters"
+    os.makedirs(clusters_dir, exist_ok=True)
+
+    # Load existing clusters
+    existing_file = os.path.join(clusters_dir, "operation_clusters.json")
+    if os.path.exists(existing_file):
+        with open(existing_file, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    else:
+        data = {"clusters": [], "last_scan": None, "last_scan_log_id": ""}
+
+    # Add new clusters (avoid duplicates by cluster_id)
+    existing_ids = {c.get("cluster_id") for c in data.get("clusters", [])}
+    for cluster in clusters:
+        if cluster.get("cluster_id") not in existing_ids:
+            data["clusters"].append(cluster)
+
+    # Save
+    with open(existing_file, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+
+def _save_review_result(cluster_id: str, review_result: Dict) -> None:
+    """Save LLM review result to file."""
+    review_dir = "data/reviews"
+    os.makedirs(review_dir, exist_ok=True)
+
+    review_file = os.path.join(review_dir, f"{cluster_id}.json")
+    with open(review_file, "w", encoding="utf-8") as f:
+        json.dump(review_result, f, ensure_ascii=False, indent=2)
+
+
+def _load_review_result(cluster_id: str) -> Optional[Dict]:
+    """Load review result for a specific cluster."""
+    review_file = f"data/reviews/{cluster_id}.json"
+    if os.path.exists(review_file):
+        with open(review_file, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return None
+
+
+def _load_review_results() -> Dict[str, Dict]:
+    """Load all review results."""
+    review_dir = "data/reviews"
+    results = {}
+
+    if os.path.exists(review_dir):
+        for filename in os.listdir(review_dir):
+            if filename.endswith(".json"):
+                cluster_id = filename[:-5]  # Remove .json
+                with open(os.path.join(review_dir, filename), "r", encoding="utf-8") as f:
+                    results[cluster_id] = json.load(f)
+
+    return results
 
 
 # ============================================================================
@@ -323,6 +387,13 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
+    # Mount static files for dashboard
+    from fastapi.staticfiles import StaticFiles
+    import os
+    static_dir = os.path.join(os.path.dirname(__file__), "static")
+    if os.path.exists(static_dir):
+        app.mount("/static", StaticFiles(directory=static_dir), name="static")
+
     # ========================================================================
     # API Endpoints
     # ========================================================================
@@ -394,6 +465,16 @@ def create_app() -> FastAPI:
             ),
         }
 
+    @app.get("/dashboard", response_class=HTMLResponse)
+    @app.get("/dashboard/", response_class=HTMLResponse)
+    async def dashboard():
+        """Serve the dashboard HTML page"""
+        dashboard_path = os.path.join(os.path.dirname(__file__), "static", "dashboard", "index.html")
+        if os.path.exists(dashboard_path):
+            with open(dashboard_path, "r", encoding="utf-8") as f:
+                return f.read()
+        raise HTTPException(status_code=404, detail="Dashboard not found")
+
     # ========================================================================
     # Skill Learning API Endpoints
     # ========================================================================
@@ -401,13 +482,48 @@ def create_app() -> FastAPI:
     # Import learning modules
     try:
         from learning import ClusterEngine, OperationLogger
+        from learning import LLMClusterEngine, LLMReviewer, create_llm_client
         _learning_available = True
-    except ImportError:
+        _llm_available = True
+    except ImportError as e:
         _learning_available = False
-        print("[SERVER] Warning: learning module not available")
+        _llm_available = False
+        print(f"[SERVER] Warning: learning module not available: {e}")
+
+    # Global cluster engine instances (module-level for lazy initialization)
+    _cluster_engine: Optional[ClusterEngine] = None
+    _llm_cluster_engine: Optional[LLMClusterEngine] = None
+    _llm_reviewer: Optional[LLMReviewer] = None
+
+    def _get_llm_cluster_engine() -> Optional[LLMClusterEngine]:
+        """Get or create LLM cluster engine (lazy initialization)."""
+        nonlocal _llm_cluster_engine
+        if not _learning_available:
+            return None
+        if _llm_cluster_engine is None:
+            if _llm_available:
+                llm_client = create_llm_client()
+                _llm_cluster_engine = LLMClusterEngine(llm_client=llm_client)
+            else:
+                # Fallback without LLM
+                _llm_cluster_engine = LLMClusterEngine(llm_client=None)
+        return _llm_cluster_engine
+
+    def _get_llm_reviewer() -> Optional[LLMReviewer]:
+        """Get or create LLM reviewer (lazy initialization)."""
+        nonlocal _llm_reviewer
+        if not _learning_available:
+            return None
+        if _llm_reviewer is None:
+            if _llm_available:
+                llm_client = create_llm_client()
+                _llm_reviewer = LLMReviewer(llm_client=llm_client)
+            else:
+                _llm_reviewer = None
+        return _llm_reviewer
 
     if _learning_available:
-        # Global cluster engine instance
+        # Initialize rule-based cluster engine
         _cluster_engine = ClusterEngine()
 
         @app.get("/api/v1/skills/candidates")
@@ -571,6 +687,343 @@ def create_app() -> FastAPI:
                 return {"total": 0, "skills": []}
             except Exception as e:
                 raise HTTPException(status_code=500, detail=f"Failed to load skills: {e}")
+
+        class SkillUpdateRequest(BaseModel):
+            """Request body for skill update"""
+            enabled: Optional[bool] = None
+
+        @app.patch("/api/v1/skills/{skill_id}")
+        async def update_skill(skill_id: str, request: SkillUpdateRequest):
+            """
+            Update a skill's properties (e.g., enabled status).
+
+            Args:
+                skill_id: The skill ID to update
+                request: Update request with fields to modify
+
+            Returns:
+                Updated skill info
+            """
+            try:
+                skills_file = "rules/learned_skills.json"
+                if not os.path.exists(skills_file):
+                    raise HTTPException(status_code=404, detail="Skills file not found")
+
+                with open(skills_file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+
+                # Find the skill
+                skill = None
+                for r in data.get("rules", []):
+                    if r.get("id") == skill_id:
+                        skill = r
+                        break
+
+                if not skill:
+                    raise HTTPException(status_code=404, detail=f"Skill not found: {skill_id}")
+
+                # Update fields
+                if request.enabled is not None:
+                    skill["enabled"] = request.enabled
+
+                # Save
+                with open(skills_file, "w", encoding="utf-8") as f:
+                    json.dump(data, f, ensure_ascii=False, indent=2)
+
+                return {
+                    "success": True,
+                    "skill_id": skill_id,
+                    "enabled": skill.get("enabled", True)
+                }
+
+            except HTTPException:
+                raise
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"Failed to update skill: {e}")
+
+        @app.delete("/api/v1/skills/{skill_id}")
+        async def delete_skill(skill_id: str):
+            """
+            Delete a skill from the learned skills file.
+
+            Args:
+                skill_id: The skill ID to delete
+
+            Returns:
+                Success status
+            """
+            try:
+                from learning.skill_generator import SkillGenerator
+                generator = SkillGenerator()
+                success = generator.delete_skill(skill_id)
+
+                if not success:
+                    raise HTTPException(status_code=404, detail=f"Skill not found: {skill_id}")
+
+                return {"success": True, "skill_id": skill_id}
+
+            except HTTPException:
+                raise
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"Failed to delete skill: {e}")
+
+        # ====================================================================
+        # LLM-Enhanced Sequence Clustering
+        # ====================================================================
+
+        @app.post("/api/v1/skills/cluster/sequences/llm")
+        async def trigger_llm_sequence_clustering(
+            similarity_threshold: float = 0.75,
+            min_cluster_size: int = 2,  # Lower default for sequences
+            embedding_model: str = None,  # Use local model by default
+            use_llm_pattern: bool = True,  # Use LLM for pattern extraction
+            llm_model: str = "local_qwen8b",  # LLM model for pattern extraction
+        ):
+            """
+            Trigger LLM-enhanced sequence clustering.
+
+            This combines sequence detection with semantic embeddings:
+            1. Groups operations into sequences by instruction
+            2. Uses sentence embeddings for semantic similarity
+            3. Clusters similar sequences using DBSCAN
+            4. Extracts patterns using LLM (optional) or heuristic
+
+            Example: "输入网址访问百度" and "输入网址访问 Google"
+            will be clustered together even though text differs.
+
+            Args:
+                similarity_threshold: Minimum semantic similarity (0-1, default 0.75)
+                min_cluster_size: Minimum sequences to form a cluster (default 2)
+                embedding_model: Model name or local path (default: auto-detect local)
+                use_llm_pattern: Use LLM for pattern extraction (default True)
+                llm_model: LLM model name from model_config.json (default "local_qwen8b")
+
+            Returns:
+                Clustering result with new sequence clusters
+            """
+            if not _llm_available:
+                raise HTTPException(
+                    status_code=503,
+                    detail="LLM components not available."
+                )
+
+            try:
+                logger = OperationLogger()
+                logs = logger.load_logs(limit=1000)
+
+                # Create engine with LLM pattern extraction
+                llm_client = create_llm_client(model_name=llm_model) if use_llm_pattern else None
+                engine = LLMClusterEngine(
+                    llm_client=llm_client,
+                    use_llm_pattern=use_llm_pattern
+                )
+                engine.similarity_threshold = similarity_threshold
+                engine.min_cluster_size = min_cluster_size
+                engine.embedding_model.clear_cache()  # Clear cache for fresh embeddings
+
+                clusters = engine.cluster_sequences(logs, min_cluster_size=min_cluster_size)
+
+                # Save clusters to file
+                _save_llm_clusters(clusters)
+
+                return {
+                    "success": True,
+                    "new_clusters": len(clusters),
+                    "parameters": {
+                        "similarity_threshold": similarity_threshold,
+                        "min_cluster_size": min_cluster_size,
+                        "embedding_model": engine.embedding_model.model_name_or_path,
+                        "use_llm_pattern": use_llm_pattern,
+                        "llm_model": llm_model if use_llm_pattern else None,
+                    },
+                    "clusters": [
+                        {
+                            "cluster_id": c["cluster_id"],
+                            "cluster_type": c.get("cluster_type", "sequence_llm"),
+                            "pattern": c["pattern"],
+                            "count": c["count"],
+                            "sample_instructions": c.get("sample_instructions", [])[:3],
+                            "sample_sequences": c.get("sample_sequences", [])[:2],
+                        }
+                        for c in clusters
+                    ],
+                }
+            except Exception as e:
+                import traceback
+                error_detail = f"LLM sequence clustering failed: {e}\n{traceback.format_exc()}"
+                print(f"[SERVER] {error_detail}")
+                raise HTTPException(status_code=500, detail=error_detail)
+
+        @app.post("/api/v1/skills/candidates/{cluster_id}/review")
+        async def review_candidate_with_llm(cluster_id: str):
+            """
+            Review a candidate skill using LLM.
+
+            The LLM will evaluate the candidate on:
+            - Quality: Pattern clarity and consistency
+            - Safety: Risk level assessment
+            - Reusability: Generalization quality
+
+            Based on the review, the candidate may be:
+            - Auto-approved (high confidence, low risk)
+            - Flagged for human review (low confidence or high risk)
+
+            Args:
+                cluster_id: The candidate cluster ID
+
+            Returns:
+                Review result with decision and detailed scores
+            """
+            if not _llm_available:
+                raise HTTPException(
+                    status_code=503,
+                    detail="LLM components not available."
+                )
+
+            # Get the cluster
+            cluster = _cluster_engine.get_cluster(cluster_id)
+            if not cluster:
+                raise HTTPException(status_code=404, detail="Cluster not found")
+
+            # Review with LLM
+            reviewer = _get_llm_reviewer()
+            if reviewer is None:
+                raise HTTPException(status_code=503, detail="LLM reviewer not initialized")
+
+            review_result = reviewer.review_candidate(cluster)
+
+            # Save review result
+            _save_review_result(cluster_id, review_result)
+
+            return {
+                "success": True,
+                "cluster_id": cluster_id,
+                "review": review_result,
+            }
+
+        @app.post("/api/v1/skills/candidates/{cluster_id}/auto-approve")
+        async def auto_approve_with_llm(cluster_id: str):
+            """
+            Auto-approve a candidate skill using LLM review.
+
+            If the LLM review recommends auto-approval (high confidence, low risk),
+            the skill will be automatically approved and added to the skill library.
+
+            Args:
+                cluster_id: The candidate cluster ID
+
+            Returns:
+                Result with approval decision and skill info if approved
+            """
+            if not _llm_available:
+                raise HTTPException(
+                    status_code=503,
+                    detail="LLM components not available."
+                )
+
+            # Get the cluster
+            cluster = _cluster_engine.get_cluster(cluster_id)
+            if not cluster:
+                raise HTTPException(status_code=404, detail="Cluster not found")
+
+            if cluster.get("status") != "candidate":
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Cluster is not a candidate (status: {cluster.get('status')})"
+                )
+
+            # Review with LLM
+            reviewer = _get_llm_reviewer()
+            if reviewer is None:
+                raise HTTPException(status_code=503, detail="LLM reviewer not initialized")
+
+            review_result = reviewer.review_candidate(cluster)
+            decision = review_result.get("decision", "requires_human_review")
+
+            if decision == "auto_approved":
+                # Auto-approve the cluster
+                _cluster_engine.approve_cluster(cluster_id)
+
+                # Generate and save skill
+                try:
+                    from learning.skill_generator import SkillGenerator
+                    generator = SkillGenerator()
+                    skill = generator.generate_skill(cluster)
+                    generator.save_skill(skill)
+
+                    return {
+                        "success": True,
+                        "decision": "auto_approved",
+                        "cluster_id": cluster_id,
+                        "skill_id": skill.get("id"),
+                        "review": review_result,
+                    }
+                except Exception as e:
+                    return {
+                        "success": False,
+                        "decision": "approved_but_generation_failed",
+                        "cluster_id": cluster_id,
+                        "error": str(e),
+                        "review": review_result,
+                    }
+            else:
+                # Not approved, save review result for human
+                _save_review_result(cluster_id, review_result)
+
+                return {
+                    "success": True,
+                    "decision": decision,
+                    "cluster_id": cluster_id,
+                    "reason": review_result.get("recommendation", {}).get("reason", ""),
+                    "review": review_result,
+                }
+
+        @app.get("/api/v1/skills/review-queue")
+        async def get_review_queue():
+            """
+            Get candidates that require human review.
+
+            Returns candidates that have been reviewed by LLM but
+            flagged for human review (low confidence or high risk).
+            """
+            candidates = _cluster_engine.get_candidates()
+
+            # Load review results
+            review_results = _load_review_results()
+
+            # Filter to those requiring human review
+            human_review_queue = []
+            for c in candidates:
+                cluster_id = c.get("cluster_id")
+                review = review_results.get(cluster_id, {})
+
+                # Include if:
+                # 1. Has been reviewed and flagged for human review
+                # 2. Has not been reviewed yet
+                if review.get("decision") == "requires_human_review" or not review:
+                    human_review_queue.append({
+                        "cluster": c,
+                        "review": review if review else None,
+                    })
+
+            return {
+                "total": len(human_review_queue),
+                "queue": human_review_queue,
+            }
+
+        @app.get("/api/v1/skills/llm-stats")
+        async def get_llm_skill_stats():
+            """Get statistics about LLM-enhanced skill learning."""
+            if not _llm_available:
+                return {"available": False}
+
+            reviewer = _get_llm_reviewer()
+            review_stats = reviewer.get_review_stats() if reviewer else {}
+
+            return {
+                "available": True,
+                "review_stats": review_stats,
+            }
 
     return app
 
