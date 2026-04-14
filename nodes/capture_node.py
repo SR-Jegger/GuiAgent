@@ -7,6 +7,8 @@ Responsible for capturing screenshots at each step.
 import os
 from typing import TYPE_CHECKING
 
+import cv2
+
 from nodes.types import AgentState
 from utils.computer_tools import ComputerTools
 from utils.utils import get_output_dir
@@ -91,9 +93,18 @@ def capture_node(state: AgentState) -> AgentState:
 
     print(f"[CAPTURE] Screenshot saved to: {screenshot_path}")
 
+    # Read screenshot as numpy array for OCR processing
+    screenshot_array = cv2.imread(screenshot_path)
+    if screenshot_array is None:
+        print(f"[CAPTURE] Warning: Failed to read screenshot as numpy array")
+        screenshot_array = None
+    else:
+        print(f"[CAPTURE] Screenshot array shape: {screenshot_array.shape}")
+
     return {
         "step_id": step_id,
         "screenshot_path": screenshot_path,
+        "screenshot_array": screenshot_array,  # numpy array for OCR
         "execution_status": "success",
         "error_message": None,
         "retry_count": 0,
