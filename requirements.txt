@@ -16,6 +16,10 @@ Pillow>=10.0.0
 # Image processing (for template matching)
 opencv-python>=4.8.0
 
+# OCR (for text recognition in GUI)
+paddleocr>=2.7.0
+paddlepaddle>=2.5.0
+
 # FastAPI server (for hot-start mode)
 fastapi>=0.109.0
 uvicorn>=0.27.0
