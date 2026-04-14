@@ -104,14 +104,14 @@ def build_agent_graph() -> StateGraph:
     """
     Build and return the LangGraph StateGraph for the GUI automation agent.
 
-    Graph structure for multi-step tasks:
-        START -> task_decomposer -> fast_path -> (execution | capture) -> reasoning -> judge -> (execution | template_match)
-                                                                                        -> (next step | END)
+    【流程变更】Graph structure for multi-step tasks (Capture前置为Fast Path提供截图):
+        START -> task_decomposer -> capture -> fast_path -> (matched: execution | not matched: reasoning) -> judge -> (execution | template_match)
+                                                                                                           -> (next step | END)
 
     Nodes:
         - task_decomposer: Parse multi-step tasks into sub-steps
-        - fast_path: Rule-based quick matching
-        - capture: Screenshot capture
+        - capture: Screenshot capture (前置为Fast Path提供截图)
+        - fast_path: Rule-based quick matching (使用Capture提供的截图进行匹配)
         - reasoning: VLM-based action planning
         - judge: Template match decision
         - template_match: Template-based fallback
@@ -119,13 +119,13 @@ def build_agent_graph() -> StateGraph:
         - error_handler: Error recovery
 
     Conditional edges:
-        - After task_decomposer: -> fast_path
-        - After fast_path: matched -> execution, not matched -> capture
-        - After capture: success -> reasoning, error -> error_handler
+        - After task_decomposer: -> capture (前置)
+        - After capture: success -> fast_path, error -> error_handler
+        - After fast_path: matched -> execution, not matched -> reasoning
         - After reasoning: success -> judge, stop -> END, error -> error_handler
         - After judge: template_match -> template_match, execute -> execution
         - After template_match: success -> execution, error -> error_handler
-        - After execution: continue -> (next step or capture), stop -> END, error -> error_handler
+        - After execution: continue -> capture (next step), stop -> END, error -> error_handler
         - After error_handler: retry -> capture, max retries -> END
     """
     # Create the graph builder
@@ -146,18 +146,20 @@ def build_agent_graph() -> StateGraph:
     builder.set_entry_point("task_decomposer")
 
     # Add conditional edges
-    def fast_path_router(state: AgentState) -> Literal["execution", "capture"]:
-        """Fast Path 路由：匹配成功直接执行，失败则进入 capture->reasoning 流程"""
+    # 【流程变更】Fast Path Router：匹配成功执行，失败进入Reasoning（而非Capture）
+    def fast_path_router(state: AgentState) -> Literal["execution", "reasoning"]:
+        """Fast Path 路由：匹配成功直接执行，失败则进入 Reasoning 流程（Capture已前置，无需再走Capture）"""
         if state.get("fast_path_matched", False):
             return "execution"
-        return "capture"
+        return "reasoning"  # 【变更】capture -> reasoning
 
-    def capture_router(state: AgentState) -> Literal["END", "reasoning", "error_handler"]:
-        """Capture 路由：检查 stop_flag 或 execution_status"""
+    # 【流程变更】Capture Router：成功时进入Fast Path而非Reasoning
+    def capture_router(state: AgentState) -> Literal["END", "fast_path", "error_handler"]:
+        """Capture 路由：检查 stop_flag 或 execution_status，成功时进入Fast Path"""
         if state.get("stop_flag"):
             return "END"
         if state.get("execution_status") == "success":
-            return "reasoning"
+            return "fast_path"  # 【变更】reasoning -> fast_path（Capture前置为Fast Path提供截图）
         return "error_handler"
 
     def reasoning_router(state: AgentState) -> Literal["sub_end", "judge", "error_handler"]:
@@ -192,13 +194,13 @@ def build_agent_graph() -> StateGraph:
             return "continue_current"
         return "error_handler"
 
-    # Continue Handler -> Fast Path (next sub-step) or Capture (normal flow)
-    def continue_handler_router(state: AgentState) -> Literal["fast_path", "capture"]:
+    # 【流程变更】Continue Handler -> Capture（而非Fast Path，因为Capture已前置）
+    def continue_handler_router(state: AgentState) -> Literal["capture", "END"]:
         sub_steps = state.get("sub_steps", [])
         current_step_index = state.get("current_step_index", 0)
         if sub_steps and current_step_index < len(sub_steps):
-            # Has next sub-step, go to fast_path
-            return "fast_path"
+            # 【变更】有下一个子步骤时进入Capture（而非Fast Path），Capture为Fast Path提供截图
+            return "capture"
         return "END"
 
     def error_router(state: AgentState) -> Literal["capture", "end"]:
@@ -206,26 +208,26 @@ def build_agent_graph() -> StateGraph:
             return "end"
         return "capture"
 
-    # Task Decomposer -> Fast Path
-    builder.add_edge("task_decomposer", "fast_path")
+    # 【流程变更】Task Decomposer -> Capture（不再直接到Fast Path，capture前置为fast_path提供截图）
+    builder.add_edge("task_decomposer", "capture")
 
-    # Fast Path -> Execution or Capture (fallback)
+    # 【流程变更】Fast Path -> Execution or Reasoning（匹配失败时进入Reasoning而非Capture，因为Capture已前置）
     builder.add_conditional_edges(
         "fast_path",
         fast_path_router,
         {
             "execution": "execution",
-            "capture": "capture",
+            "reasoning": "reasoning",  # 【变更】capture -> reasoning
         },
     )
 
-    # Capture -> Reasoning or Error Handler or END (stop_flag)
+    # 【流程变更】Capture -> Fast Path or Error Handler or END（成功时进入Fast Path而非Reasoning）
     builder.add_conditional_edges(
         "capture",
         capture_router,
         {
             "END": END,
-            "reasoning": "reasoning",
+            "fast_path": "fast_path",  # 【变更】reasoning -> fast_path
             "error_handler": "error_handler",
         },
     )
@@ -268,7 +270,7 @@ def build_agent_graph() -> StateGraph:
         "continue_handler",
         continue_handler_router,
         {
-            "fast_path": "fast_path",
+            "capture": "capture",  # 【变更】fast_path -> capture（Continue Handler进入Capture而非Fast Path）
             "END": END,
         },
     )
@@ -303,26 +305,28 @@ def build_agent_graph_simple() -> StateGraph:
     """
     Build and return the LangGraph StateGraph for the GUI automation agent.
 
-    Graph structure for multi-step tasks:
-        START -> task_decomposer -> fast_path -> (execution | capture) -> reasoning -> judge -> (execution | template_match)
-                                                                                        -> (next step | END)
+    【流程变更】Graph structure for multi-step tasks (Capture前置为Fast Path提供截图):
+        START -> task_decomposer -> capture -> fast_path -> (matched: execution | not matched: reasoning)
+                                                                           -> (next step | END)
+
     Nodes:
         - task_decomposer: Parse multi-step tasks into sub-steps
-        - fast_path: Rule-based quick matching
-        - capture: Screenshot capture
+        - capture: Screenshot capture (前置为Fast Path提供截图)
+        - fast_path: Rule-based quick matching (使用Capture提供的截图进行匹配)
         - reasoning: VLM-based action planning
         - x judge: Template match decision
         - x template_match: Template-based fallback
         - execution: Action execution
         - error_handler: Error recovery
+
     Conditional edges:
-        - After task_decomposer: -> fast_path
-        - After fast_path: matched -> execution, not matched -> capture
-        - After capture: success -> reasoning, error -> error_handler
-        - After reasoning: success -> judge, stop -> END, error -> error_handler
+        - After task_decomposer: -> capture (前置)
+        - After capture: success -> fast_path, error -> error_handler
+        - After fast_path: matched -> execution, not matched -> reasoning
+        - After reasoning: success -> execution, stop -> END, error -> error_handler
         - x After judge: template_match -> template_match, execute -> execution
         - x After template_match: success -> execution, error -> error_handler
-        - After execution: continue -> (next step or capture), stop -> END, error -> error_handler
+        - After execution: continue -> capture (next step), stop -> END, error -> error_handler
         - After error_handler: retry -> capture, max retries -> END
     """
     # Create the graph builder
@@ -341,18 +345,20 @@ def build_agent_graph_simple() -> StateGraph:
     builder.set_entry_point("task_decomposer")
 
     # Add conditional edges
-    def fast_path_router(state: AgentState) -> Literal["execution", "capture"]:
-        """Fast Path 路由：匹配成功直接执行，失败则进入 capture->reasoning 流程"""
+    # 【流程变更】Fast Path Router：匹配成功执行，失败进入Reasoning（而非Capture）
+    def fast_path_router(state: AgentState) -> Literal["execution", "reasoning"]:
+        """Fast Path 路由：匹配成功直接执行，失败则进入 Reasoning 流程（Capture已前置，无需再走Capture）"""
         if state.get("fast_path_matched", False):
             return "execution"
-        return "capture"
+        return "reasoning"  # 【变更】capture -> reasoning
 
-    def capture_router(state: AgentState) -> Literal["END", "reasoning", "error_handler"]:
-        """Capture 路由：检查 stop_flag 或 execution_status"""
+    # 【流程变更】Capture Router：成功时进入Fast Path而非Reasoning
+    def capture_router(state: AgentState) -> Literal["END", "fast_path", "error_handler"]:
+        """Capture 路由：检查 stop_flag 或 execution_status，成功时进入Fast Path"""
         if state.get("stop_flag"):
             return "END"
         if state.get("execution_status") == "success":
-            return "reasoning"
+            return "fast_path"  # 【变更】reasoning -> fast_path（Capture前置为Fast Path提供截图）
         return "error_handler"
 
     def reasoning_router(state: AgentState) -> Literal["sub_end", "execution", "error_handler"]:
@@ -374,14 +380,14 @@ def build_agent_graph_simple() -> StateGraph:
             return "continue_current"
         return "error_handler"
 
-    # Continue Handler -> Fast Path (next sub-step) or Capture (normal flow)
-    def continue_handler_router(state: AgentState) -> Literal["fast_path", "capture"]:
+    # 【流程变更】Continue Handler -> Capture（而非Fast Path，因为Capture已前置）
+    def continue_handler_router(state: AgentState) -> Literal["capture", "END"]:
         sub_steps = state.get("sub_steps", [])
         current_step_index = state.get("current_step_index", 0)
         print(f"\n[CONTINUE_HANDLER_ROUTER] current_step_index: {current_step_index}, sub_steps: {len(sub_steps)}")
         if sub_steps and current_step_index < len(sub_steps):
-            # Has next sub-step, go to fast_path
-            return "fast_path"
+            # 【变更】有下一个子步骤时进入Capture（而非Fast Path），Capture为Fast Path提供截图
+            return "capture"
         return "END"
 
     def error_router(state: AgentState) -> Literal["capture", "end"]:
@@ -389,26 +395,26 @@ def build_agent_graph_simple() -> StateGraph:
             return "end"
         return "capture"
 
-    # Task Decomposer -> Fast Path
-    builder.add_edge("task_decomposer", "fast_path")
+    # 【流程变更】Task Decomposer -> Capture（不再直接到Fast Path，capture前置为fast_path提供截图）
+    builder.add_edge("task_decomposer", "capture")
 
-    # Fast Path -> Execution or Capture (fallback)
+    # 【流程变更】Fast Path -> Execution or Reasoning（匹配失败时进入Reasoning而非Capture，因为Capture已前置）
     builder.add_conditional_edges(
         "fast_path",
         fast_path_router,
         {
             "execution": "execution",
-            "capture": "capture",
+            "reasoning": "reasoning",  # 【变更】capture -> reasoning
         },
     )
 
-    # Capture -> Reasoning or Error Handler or END (stop_flag)
+    # 【流程变更】Capture -> Fast Path or Error Handler or END（成功时进入Fast Path而非Reasoning）
     builder.add_conditional_edges(
         "capture",
         capture_router,
         {
             "END": END,
-            "reasoning": "reasoning",
+            "fast_path": "fast_path",  # 【变更】reasoning -> fast_path
             "error_handler": "error_handler",
         },
     )
@@ -440,7 +446,7 @@ def build_agent_graph_simple() -> StateGraph:
         "continue_handler",
         continue_handler_router,
         {
-            "fast_path": "fast_path",
+            "capture": "capture",  # 【变更】fast_path -> capture（Continue Handler进入Capture而非Fast Path）
             "END": END,
         },
     )
