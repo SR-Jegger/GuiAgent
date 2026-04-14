@@ -278,26 +278,7 @@ class ActionResolver:
 
         return result
 
-    def _parse_offset_expression(
-        self,
-        expr: str
-    ) -> Optional[Tuple[str, int]]:
-        """Parse offset expression to extract axis and offset value.
-
-        Args:
-            expr: Expression to parse (e.g., "{{prev_x+20}}").
-
-        Returns:
-            Tuple of (axis, offset) if valid offset expression, None otherwise.
-        """
-        match = OFFSET_PATTERN.match(expr)
-        if match:
-            axis = f"prev_{match.group(1)}"
-            offset_str = match.group(2)
-            offset = int(offset_str) if offset_str else 0
-            return (axis, offset)
-        return None
-
+    
     def _parse_coordinate_string(
         self,
         expr: str

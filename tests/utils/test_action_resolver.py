@@ -127,65 +127,6 @@ class TestReplaceMatchGroups:
         assert result == "plain text"
 
 
-# Test _parse_offset_expression function
-class TestParseOffsetExpression:
-    """Test coordinate offset parsing."""
-
-    def test_prev_x_with_offset(self):
-        """Parse prev_x with positive offset."""
-        from utils.action_resolver import ActionResolver
-
-        resolver = ActionResolver()
-        result = resolver._parse_offset_expression("{{prev_x+20}}")
-        assert result == ("prev_x", 20)
-
-    def test_prev_y_with_offset(self):
-        """Parse prev_y with positive offset."""
-        from utils.action_resolver import ActionResolver
-
-        resolver = ActionResolver()
-        result = resolver._parse_offset_expression("{{prev_y+50}}")
-        assert result == ("prev_y", 50)
-
-    def test_prev_x_with_negative_offset(self):
-        """Parse prev_x with negative offset."""
-        from utils.action_resolver import ActionResolver
-
-        resolver = ActionResolver()
-        result = resolver._parse_offset_expression("{{prev_x-10}}")
-        assert result == ("prev_x", -10)
-
-    def test_prev_y_no_offset(self):
-        """Parse prev_y without offset."""
-        from utils.action_resolver import ActionResolver
-
-        resolver = ActionResolver()
-        result = resolver._parse_offset_expression("{{prev_y}}")
-        assert result == ("prev_y", 0)
-
-    def test_prev_x_no_offset(self):
-        """Parse prev_x without offset."""
-        from utils.action_resolver import ActionResolver
-
-        resolver = ActionResolver()
-        result = resolver._parse_offset_expression("{{prev_x}}")
-        assert result == ("prev_x", 0)
-
-    def test_invalid_expression(self):
-        """Invalid expression should return None."""
-        from utils.action_resolver import ActionResolver
-
-        resolver = ActionResolver()
-        result = resolver._parse_offset_expression("not_a_placeholder")
-        assert result is None
-
-    def test_other_placeholder(self):
-        """Other placeholder types should return None."""
-        from utils.action_resolver import ActionResolver
-
-        resolver = ActionResolver()
-        result = resolver._parse_offset_expression("{{ocr:button}}")
-        assert result is None
 
 
 # Test _resolve_coordinate function
