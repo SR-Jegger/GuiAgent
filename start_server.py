@@ -60,6 +60,7 @@ def main():
     print(f"  Reload: {args.reload}")
     print("=" * 60)
     print(f"\nAPI Documentation: http://{address}:{args.port}/docs")
+    print(f"Visualizer: http://{address}:{args.port}/dashboard")
     print(f"Health Check: http://{address}:{args.port}/api/v1/health")
     print(f"\nPress Ctrl+C to stop the server\n")
     print("=" * 60)

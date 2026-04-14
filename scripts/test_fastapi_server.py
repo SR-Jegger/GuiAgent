@@ -100,6 +100,40 @@ def test_create_task(mdpath: str = "../test_md/test_ui9.md"):
         return None
 
 
+# def test_create_task(mdpath: str = ""):
+#     """测试 2: 创建任务"""
+#     print_section("Test : 创建任务")
+    
+    
+#     payload = {
+#         "task_name": "自动化测试示例1",
+#         "instruction": "双击打开Edge Dev浏览器",
+#         "max_steps": 30,
+#         "max_retries": 3,
+#     }
+
+#     try:
+#         resp = requests.post(
+#             f"http://192.168.137.1:8000/api/v1/tasks",
+#             json=payload,
+#             timeout=10
+#         )
+#         print(f"状态码：{resp.status_code}")
+#         data = resp.json()
+#         print(f"响应：{data}")
+
+#         if resp.status_code == 200 and "task_id" in data:
+#             print("✓ 任务创建成功")
+#             print(f"  Task ID: {data['task_id']}")
+#             print(f"  状态：{data['status']}")
+#             return data["task_id"]
+#         else:
+#             print("✗ 任务创建失败")
+#             return None
+#     except Exception as e:
+#         print(f"✗ 错误：{e}")
+#         return None
+
 def test_get_task(task_id: str):
     """测试 3: 查询任务状态"""
     print_section(f"Test 3: 查询任务状态 ({task_id[:8]}...)")
@@ -254,5 +288,6 @@ def main(mdpath: str = "../test_md/test_ui9.md"):
 
 
 if __name__ == "__main__":
-    mdpath = "../test_md/test_ui9.md"
+    mdpath = "../test_md/test_ui8.md"
     main(mdpath)
+20 120 

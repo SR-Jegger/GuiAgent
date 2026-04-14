@@ -78,7 +78,9 @@ def execution_node(state: AgentState) -> AgentState:
                 "retry_count": state.get("retry_count", 0) + 1,
             }
         print(f"[EXECUTION] Using Fast Path actions: {len(action_list)} action(s)")
-        resized_width, resized_height = 1920, 1080
+
+        # Get screen size for coordinate rescaling
+        screen_width, screen_height = _get_screen_size()
     else:
         # Normal VLM flow: extract actions from llm_response
         if not llm_response:
@@ -117,6 +119,7 @@ def execution_node(state: AgentState) -> AgentState:
     # Execute each action
     stop_flag = False
     executed_actions = []
+    normalized_actions = []  # Store normalized coordinates for logging
 
     # 从llm_response 或 fastrule节点 中提取的动作列表action_list
     try:
@@ -131,9 +134,15 @@ def execution_node(state: AgentState) -> AgentState:
             action_type = action_parameter.get("action", "")
             print(f"  [EXECUTION] Action {action_id + 1}: {action_type}")
 
-            # Rescale coordinates (skip for Fast Path if no coordinate in action)
-            if not fast_path_matched and state.get("action_coordinate") is None:
-                print("  [EXECUTION] !!Rescaling coordinates...")
+            # Rescale coordinates
+            if fast_path_matched:
+                # Fast Path: check if coordinates are normalized and rescale
+                if action_parameter.get("coordinate_normalized"):
+                    print("  [EXECUTION] Rescaling normalized coordinates for Fast Path...")
+                    rescale_coordinates(action_parameter, screen_width, screen_height)
+            elif state.get("action_coordinate") is None:
+                # Normal VLM flow: always rescale from normalized (0-1000)
+                print("  [EXECUTION] Rescaling coordinates...")
                 rescale_coordinates(action_parameter, resized_width, resized_height)
 
             # Execute action and check for stop signal
@@ -146,6 +155,13 @@ def execution_node(state: AgentState) -> AgentState:
                 break
 
             executed_actions.append(action_parameter)
+
+            # Store normalized coordinates for logging (resolution-independent)
+            if not fast_path_matched:
+                # Get actual screen size for normalization
+                screen_width, screen_height = _get_screen_size()
+                normalized = normalize_coordinates(action_parameter, screen_width, screen_height)
+                normalized_actions.append(normalized)
 
             # Annotate screenshot for debugging (skip for Fast Path)
             if not fast_path_matched and screenshot_path:
@@ -178,12 +194,13 @@ def execution_node(state: AgentState) -> AgentState:
         history.append(history_entry)
 
         # Log operation for skill learning (only for VLM actions)
-        if _logger_available and executed_actions:
+        # Use normalized coordinates for resolution-independent storage
+        if _logger_available and normalized_actions:
             try:
                 logger = OperationLogger()
                 logger.log_from_state(
                     state=state,
-                    actions=executed_actions,
+                    actions=normalized_actions,  # Use normalized coordinates
                     success=True,
                     source="vlm",
                 )
@@ -224,6 +241,31 @@ def rescale_coordinates(action_parameter: dict, resized_width: int, resized_heig
             action_parameter[key][1] = int(
                 action_parameter[key][1] / 1000 * resized_height
             )
+
+
+def normalize_coordinates(action_parameter: dict, width: int, height: int) -> dict:
+    """
+    Convert pixel coordinates to normalized coordinates (0-1000 range).
+
+    Returns a copy with normalized coordinates, does not modify original.
+
+    Args:
+        action_parameter: Action parameters dict
+        width: Screen width in pixels
+        height: Screen height in pixels
+
+    Returns:
+        Copy of action_parameter with normalized coordinates
+    """
+    import copy
+    result = copy.deepcopy(action_parameter)
+
+    for key in ("coordinate", "coordinate1", "coordinate2"):
+        if key in result:
+            result[key][0] = int(result[key][0] / width * 1000)
+            result[key][1] = int(result[key][1] / height * 1000)
+
+    return result
 
 
 def execute_action(computer_tools: ComputerTools, action_parameter: dict) -> bool:
@@ -360,3 +402,22 @@ def execute_action(computer_tools: ComputerTools, action_parameter: dict) -> boo
         raise ValueError(f"Unsupported action type: {action_type}")
 
     return False  # continue execution
+
+
+def _get_screen_size() -> tuple[int, int]:
+    """
+    Get the current screen resolution.
+
+    Returns:
+        Tuple of (width, height) in pixels
+    """
+    try:
+        import pyautogui
+        width, height = pyautogui.size()
+        return width, height
+    except ImportError:
+        print("[EXECUTION] Warning: pyautogui not installed, using default 1920x1080")
+        return 1920, 1080
+    except Exception as e:
+        print(f"[EXECUTION] Warning: Could not get screen size: {e}")
+        return 1920, 1080

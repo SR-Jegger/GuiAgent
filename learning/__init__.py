@@ -6,6 +6,7 @@ This module provides:
 - ClusterEngine: Identify repeated operation patterns (rule-based)
 - LLMClusterEngine: Identify repeated operation patterns (LLM semantic)
 - SkillGenerator: Generate reusable skill rules
+- SkillStore: SQLite-based storage for learned skills
 - LLMReviewer: Automatic skill candidate review using LLM
 - Similarity utilities: Compare operations for clustering
 """
@@ -13,6 +14,7 @@ This module provides:
 from learning.operation_logger import OperationLogger
 from learning.cluster_engine import ClusterEngine
 from learning.skill_generator import SkillGenerator
+from learning.skill_store import SkillStore
 from learning.similarity import (
     is_same_operation,
     instruction_similarity,
@@ -30,6 +32,7 @@ __all__ = [
     "OperationLogger",
     "ClusterEngine",
     "SkillGenerator",
+    "SkillStore",
     "is_same_operation",
     "instruction_similarity",
     "semantic_similarity",

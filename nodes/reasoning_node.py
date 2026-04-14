@@ -171,8 +171,7 @@ def reasoning_node(state: AgentState) -> AgentState:
                 # )
                 
                 # FLAG = True  # signal to stop
-                # current_step_sub_flag = False  # signal to not continue current sub-step
-                continue_substep_flag = False  # signal to not continue to next sub-step
+                continue_substep_flag = False  # signal to not continue to current sub-step
                 print("[REASONING] Stop signal received")
                 break
 

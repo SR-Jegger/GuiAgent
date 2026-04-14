@@ -401,14 +401,39 @@
         <div class="card rounded-xl w-full max-w-3xl max-h-[85vh] overflow-auto m-4">
             <div class="p-6 border-b border-slate-700/50 flex items-center justify-between sticky top-0 bg-slate-800/95 backdrop-blur">
                 <h3 class="text-lg font-semibold text-cyber-400">技能详情</h3>
-                <button onclick="closeSkillModal()" class="text-slate-400 hover:text-white">
+                <div class="flex items-center gap-2">
+                    <button id="edit-skill-btn" onclick="openEditModal()" class="px-3 py-1.5 bg-cyber-600/20 text-cyber-400 hover:bg-cyber-600/30 rounded text-sm transition-colors flex items-center gap-1">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+                        </svg>
+                        编辑
+                    </button>
+                    <button onclick="closeSkillModal()" class="text-slate-400 hover:text-white">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+            <div id="skill-modal-content" class="p-6">
+                <!-- Dynamic content -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Skill Edit Modal -->
+    <div id="skill-edit-modal" class="fixed inset-0 bg-black/50 backdrop-blur-sm hidden items-center justify-center z-50">
+        <div class="card rounded-xl w-full max-w-3xl max-h-[85vh] overflow-auto m-4">
+            <div class="p-6 border-b border-slate-700/50 flex items-center justify-between sticky top-0 bg-slate-800/95 backdrop-blur">
+                <h3 class="text-lg font-semibold text-cyber-400">编辑技能</h3>
+                <button onclick="closeEditModal()" class="text-slate-400 hover:text-white">
                     <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
                     </svg>
                 </button>
             </div>
-            <div id="skill-modal-content" class="p-6">
-                <!-- Dynamic content -->
+            <div id="skill-edit-content" class="p-6">
+                <!-- Edit form -->
             </div>
         </div>
     </div>
@@ -784,9 +809,12 @@
             `).join('');
         }
 
+        let currentEditingSkill = null;  // Store skill being edited
+
         function showSkillDetail(skill) {
             const modal = document.getElementById('skill-modal');
             const content = document.getElementById('skill-modal-content');
+            currentEditingSkill = skill;  // Store for editing
 
             content.innerHTML = `
                 <div class="space-y-6">
@@ -914,6 +942,171 @@
             }
         }
 
+        // ==================== Skill Edit Modal ====================
+        function openEditModal() {
+            if (!currentEditingSkill) {
+                showToast('无法获取技能信息', 'error');
+                return;
+            }
+
+            const skill = currentEditingSkill;
+            const editContent = document.getElementById('skill-edit-content');
+
+            editContent.innerHTML = `
+                <form id="skill-edit-form" class="space-y-6">
+                    <!-- Basic Info -->
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="text-slate-400 text-xs uppercase tracking-wider">ID (不可修改)</label>
+                            <input type="text" value="${skill.id}" disabled class="w-full bg-slate-800/50 border border-slate-600 rounded-lg px-3 py-2 mono text-cyber-400 cursor-not-allowed">
+                        </div>
+                        <div>
+                            <label class="text-slate-400 text-xs uppercase tracking-wider">名称</label>
+                            <input type="text" id="edit-name" value="${skill.name || ''}" class="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 focus:outline-none focus:border-cyber-500">
+                        </div>
+                    </div>
+
+                    <!-- Description -->
+                    <div>
+                        <label class="text-slate-400 text-xs uppercase tracking-wider">描述</label>
+                        <textarea id="edit-description" rows="2" class="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 focus:outline-none focus:border-cyber-500">${skill.description || ''}</textarea>
+                    </div>
+
+                    <!-- Trigger Patterns -->
+                    <div>
+                        <label class="text-slate-400 text-xs uppercase tracking-wider">触发模式 (正则表达式)</label>
+                        <div id="patterns-container" class="space-y-2 mt-2">
+                            ${(skill.trigger?.patterns || []).map((p, i) => `
+                                <div class="flex gap-2">
+                                    <input type="text" id="edit-pattern-${i}" value="${p}" class="flex-1 bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 mono text-sm focus:outline-none focus:border-cyber-500">
+                                    <button type="button" onclick="removePattern(${i})" class="px-3 py-2 bg-red-600/20 text-red-400 hover:bg-red-600/30 rounded-lg text-sm">删除</button>
+                                </div>
+                            `).join('')}
+                        </div>
+                        <button type="button" onclick="addPattern()" class="mt-2 px-3 py-1.5 bg-cyber-600/20 text-cyber-400 hover:bg-cyber-600/30 rounded-lg text-sm flex items-center gap-1">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
+                            </svg>
+                            添加模式
+                        </button>
+                    </div>
+
+                    <!-- App Context -->
+                    <div>
+                        <label class="text-slate-400 text-xs uppercase tracking-wider">应用上下文</label>
+                        <input type="text" id="edit-app-context" value="${(skill.trigger?.app_context || []).join(', ')}" placeholder="应用名称，逗号分隔（如：Edge, Chrome）" class="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 focus:outline-none focus:border-cyber-500">
+                    </div>
+
+                    <!-- Actions -->
+                    <div>
+                        <label class="text-slate-400 text-xs uppercase tracking-wider">动作序列 (JSON格式)</label>
+                        <textarea id="edit-actions" rows="6" class="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 mono text-sm focus:outline-none focus:border-cyber-500">${JSON.stringify(skill.actions || [], null, 2)}</textarea>
+                        <p class="text-xs text-slate-500 mt-1">格式: [{"type": "click", "coordinate": [x, y]}, {"type": "type", "text": "..."}]</p>
+                    </div>
+
+                    <!-- Submit Buttons -->
+                    <div class="flex gap-3 pt-4">
+                        <button type="button" onclick="closeEditModal()" class="flex-1 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg font-medium transition-colors">取消</button>
+                        <button type="button" onclick="saveSkillEdit()" class="flex-1 py-2 bg-cyber-600 hover:bg-cyber-500 rounded-lg font-medium transition-colors">保存修改</button>
+                    </div>
+                </form>
+            `;
+
+            document.getElementById('skill-edit-modal').classList.remove('hidden');
+            document.getElementById('skill-edit-modal').classList.add('flex');
+        }
+
+        function closeEditModal() {
+            document.getElementById('skill-edit-modal').classList.add('hidden');
+            document.getElementById('skill-edit-modal').classList.remove('flex');
+        }
+
+        let patternCount = 0;  // Track number of patterns
+        function addPattern() {
+            const container = document.getElementById('patterns-container');
+            const newPatternHtml = `
+                <div class="flex gap-2">
+                    <input type="text" id="edit-pattern-new-${patternCount}" placeholder="输入正则表达式" class="flex-1 bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 mono text-sm focus:outline-none focus:border-cyber-500">
+                    <button type="button" onclick="removePattern('new-${patternCount}')" class="px-3 py-2 bg-red-600/20 text-red-400 hover:bg-red-600/30 rounded-lg text-sm">删除</button>
+                </div>
+            `;
+            container.insertAdjacentHTML('beforeend', newPatternHtml);
+            patternCount++;
+        }
+
+        function removePattern(index) {
+            // If it's a new pattern, remove by ID
+            if (typeof index === 'string' && index.startsWith('new-')) {
+                const input = document.getElementById(`edit-pattern-${index}`);
+                if (input && input.parentElement) {
+                    input.parentElement.remove();
+                }
+            } else {
+                // Original pattern - find and remove
+                const input = document.getElementById(`edit-pattern-${index}`);
+                if (input && input.parentElement) {
+                    input.parentElement.remove();
+                }
+            }
+        }
+
+        async function saveSkillEdit() {
+            if (!currentEditingSkill) {
+                showToast('无法获取技能信息', 'error');
+                return;
+            }
+
+            const skillId = currentEditingSkill.id;
+
+            // Collect form data
+            const name = document.getElementById('edit-name').value.trim();
+            const description = document.getElementById('edit-description').value.trim();
+            const appContextStr = document.getElementById('edit-app-context').value.trim();
+            const actionsStr = document.getElementById('edit-actions').value.trim();
+
+            // Collect patterns
+            const patterns = [];
+            const patternInputs = document.querySelectorAll('#patterns-container input');
+            patternInputs.forEach(input => {
+                const p = input.value.trim();
+                if (p) patterns.push(p);
+            });
+
+            // Parse app context
+            const appContext = appContextStr ? appContextStr.split(',').map(s => s.trim()).filter(s => s) : [];
+
+            // Parse actions
+            let actions;
+            try {
+                actions = JSON.parse(actionsStr);
+                if (!Array.isArray(actions)) {
+                    throw new Error('动作必须是数组格式');
+                }
+            } catch (e) {
+                showToast('动作 JSON 格式错误: ' + e.message, 'error');
+                return;
+            }
+
+            // Build update request
+            const updateData = {
+                name: name || skillId,
+                description: description || '',
+                trigger_patterns: patterns,
+                app_context: appContext,
+                actions: actions
+            };
+
+            try {
+                await api('PATCH', `/skills/${skillId}`, updateData);
+                showToast('技能已更新', 'success');
+                closeEditModal();
+                closeSkillModal();
+                refreshSkills();
+            } catch (e) {
+                showToast('更新失败：' + e.message, 'error');
+            }
+        }
+
         // ==================== Stats ====================
         async function refreshStats() {
             try {
@@ -961,6 +1154,9 @@
         });
         document.getElementById('skill-modal').addEventListener('click', (e) => {
             if (e.target.id === 'skill-modal') closeSkillModal();
+        });
+        document.getElementById('skill-edit-modal').addEventListener('click', (e) => {
+            if (e.target.id === 'skill-edit-modal') closeEditModal();
         });
 
         // Show tasks tab on load

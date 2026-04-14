@@ -147,8 +147,9 @@ def is_same_operation(
         title1 = app1.get("window_title", "") or app1.get("active_window", "")
         title2 = app2.get("window_title", "") or app2.get("active_window", "")
 
-        # Simple check: if both have titles, they should share significant words
-        if title1 and title2:
+        # Skip app check if either title is empty or whitespace
+        # (empty app context shouldn't block clustering)
+        if title1.strip() and title2.strip():
             title_sim = instruction_similarity(title1, title2)
             if title_sim < 0.3:  # Different apps
                 return False
@@ -445,6 +446,7 @@ def is_sequence_operation(logs: List[Dict]) -> bool:
         return False
 
     # Check 2: Check if there are consecutive step_ids within short time gaps
+    # This detects sequences where each step is logged separately within same execution
     MAX_SEQUENCE_GAP_SECONDS = 30
 
     for i in range(len(sorted_logs) - 1):
@@ -462,24 +464,27 @@ def is_sequence_operation(logs: List[Dict]) -> bool:
         except:
             time_gap = 999
 
-        # If step_id is consecutive AND time gap is small → part of same sequence
+        # Only consider sequence if:
+        # 1. step_id is consecutive (same execution instance)
+        # 2. time gap is small (< 30 seconds, same execution)
         if step2 == step1 + 1 and time_gap < MAX_SEQUENCE_GAP_SECONDS:
             return True
 
-    # Check 3: Check if step_ids span multiple values
-    step_ids = [log.get("step_id", 0) for log in sorted_logs]
-    unique_steps = sorted(set(step_ids))
+    # Check 3: If all logs have same action_structure and large time gaps
+    # → single operation executed multiple times (NOT a sequence)
+    # E.g., "地图点击" executed 4 times at different hours → single operation
+    action_structures = [log.get("action_structure", []) for log in sorted_logs]
+    if all(s == action_structures[0] for s in action_structures):
+        # Same action structure, check if time gaps are large
+        try:
+            first_time = datetime.fromisoformat(sorted_logs[0].get("timestamp", ""))
+            last_time = datetime.fromisoformat(sorted_logs[-1].get("timestamp", ""))
+            total_time_span = abs((last_time - first_time).total_seconds())
 
-    if len(unique_steps) == 1:
-        return False
-
-    min_step = min(unique_steps)
-    max_step = max(unique_steps)
-
-    if max_step - min_step >= 2:
-        step_range = set(range(min_step, max_step + 1))
-        coverage = len(unique_steps) / len(step_range) if step_range else 0
-        if coverage >= 0.5:
-            return True
+            # If total time span > 60 seconds, likely different executions
+            if total_time_span > 60:
+                return False
+        except:
+            pass
 
     return False

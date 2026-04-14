@@ -365,6 +365,7 @@ def build_agent_graph_simple() -> StateGraph:
         return "error_handler"
 
     def execution_router(state: AgentState) -> Literal["continue", "error_handler", "END"]:
+        # 这个END指的是当前的子任务是否被判断为完成，而不是整个task的结束。continue_handler会根据sub_steps和current_step_index来决定是进入下一步的fast_path还是结束整个task。
         if state.get("stop_flag"):
             return "END"
         if not state.get("sub_flag") and state.get("execution_status") == "success":

@@ -26,15 +26,21 @@ from typing import List, Dict, Optional, Any
 class RuleMatcher:
     """
     规则匹配器：匹配固定任务模式，直接执行动作
+
+    支持两种数据源：
+    - JSON 文件：手动定义的规则 (quick_actions.json, multi_step_tasks.json)
+    - SQLite：学习到的技能 (data/skills.db)
     """
 
-    def __init__(self, rules_dir="./rules", auto_load=True):
+    def __init__(self, rules_dir="./rules", auto_load=True, use_sqlite=True):
         """
         Args:
             rules_dir: 规则文件目录
             auto_load: 是否自动加载规则文件
+            use_sqlite: 是否从 SQLite 加载已学习的技能
         """
         self.rules_dir = rules_dir
+        self.use_sqlite = use_sqlite
         self.rules = []
         self.rules_cache = {}  # 编译后的正则缓存
 
@@ -46,20 +52,63 @@ class RuleMatcher:
     # =========================================================================
 
     def load_all_rules(self) -> bool:
-        """加载所有规则文件"""
-        if not os.path.exists(self.rules_dir):
-            print(f"[WARN] Rules directory not found: {self.rules_dir}")
-            return False
-
+        """加载所有规则文件和 SQLite 数据库"""
         loaded_count = 0
-        for filename in os.listdir(self.rules_dir):
-            if filename.endswith(".json"):
-                filepath = os.path.join(self.rules_dir, filename)
-                if self.load_rules_file(filepath):
-                    loaded_count += 1
 
-        print(f"[INFO] Loaded {len(self.rules)} rules from {loaded_count} files")
+        # 1. Load JSON files (except learned_skills.json when using SQLite)
+        if os.path.exists(self.rules_dir):
+            for filename in os.listdir(self.rules_dir):
+                if filename.endswith(".json"):
+                    # Skip learned_skills.json and its backups when using SQLite
+                    # (learned skills are now stored in SQLite)
+                    if self.use_sqlite and filename.startswith("learned_skills"):
+                        continue
+
+                    filepath = os.path.join(self.rules_dir, filename)
+                    if self.load_rules_file(filepath):
+                        loaded_count += 1
+
+        # 2. Load learned skills from SQLite (if enabled)
+        if self.use_sqlite:
+            sqlite_count = self.load_sqlite_skills()
+            if sqlite_count > 0:
+                loaded_count += 1  # Count as one "file" for stats
+
+        print(f"[INFO] Loaded {len(self.rules)} rules from {loaded_count} sources")
         return True
+
+    def load_sqlite_skills(self) -> int:
+        """Load learned skills from SQLite database"""
+        try:
+            from learning.skill_store import SkillStore
+            store = SkillStore()
+
+            # Get all enabled skills
+            skills = store.list_all(enabled_only=True)
+            sqlite_count = 0
+
+            for skill in skills:
+                # Check for duplicate ID
+                if any(r["id"] == skill["id"] for r in self.rules):
+                    continue
+
+                # Mark as learned
+                skill["source"] = "learned"
+                self.rules.append(skill)
+
+                # Pre-compile regex patterns
+                patterns = skill.get("trigger", {}).get("patterns", [])
+                self.rules_cache[skill["id"]] = [re.compile(p) for p in patterns]
+                sqlite_count += 1
+
+            if sqlite_count > 0:
+                print(f"[INFO] Loaded {sqlite_count} learned skills from SQLite")
+
+            return sqlite_count
+
+        except Exception as e:
+            print(f"[WARN] Could not load SQLite skills: {e}")
+            return 0
 
     def load_rules_file(self, filepath: str) -> bool:
         """加载单个规则文件"""

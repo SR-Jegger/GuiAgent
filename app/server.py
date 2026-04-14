@@ -666,36 +666,52 @@ def create_app() -> FastAPI:
             logger = OperationLogger()
             log_stats = logger.get_stats()
 
+            # Get skill storage stats (SQLite)
+            from learning.skill_generator import SkillGenerator
+            generator = SkillGenerator()
+            skill_stats = generator.get_stats()
+
             return {
                 "clusters": cluster_stats,
                 "operations": log_stats,
+                "skills": skill_stats,
             }
 
         @app.get("/api/v1/skills")
-        async def list_skills():
+        async def list_skills(cluster_type: str = None):
             """List all approved skills"""
             try:
-                import json
-                skills_file = "rules/learned_skills.json"
-                if os.path.exists(skills_file):
-                    with open(skills_file, "r", encoding="utf-8") as f:
-                        data = json.load(f)
-                    return {
-                        "total": len(data.get("rules", [])),
-                        "skills": data.get("rules", []),
-                    }
-                return {"total": 0, "skills": []}
+                from learning.skill_generator import SkillGenerator
+                generator = SkillGenerator()  # Default: use_sqlite=True
+                skills = generator.list_skills(cluster_type=cluster_type)
+                return {
+                    "total": len(skills),
+                    "skills": skills,
+                }
             except Exception as e:
                 raise HTTPException(status_code=500, detail=f"Failed to load skills: {e}")
 
         class SkillUpdateRequest(BaseModel):
             """Request body for skill update"""
             enabled: Optional[bool] = None
+            name: Optional[str] = None
+            description: Optional[str] = None
+            trigger_patterns: Optional[List[str]] = None
+            app_context: Optional[List[str]] = None
+            actions: Optional[List[Dict]] = None
 
         @app.patch("/api/v1/skills/{skill_id}")
         async def update_skill(skill_id: str, request: SkillUpdateRequest):
             """
-            Update a skill's properties (e.g., enabled status).
+            Update a skill's properties.
+
+            Supports updating:
+            - enabled: Enable/disable the skill
+            - name: Skill name
+            - description: Skill description
+            - trigger_patterns: Regex patterns for matching
+            - app_context: Application context filters
+            - actions: Action sequence
 
             Args:
                 skill_id: The skill ID to update
@@ -705,35 +721,51 @@ def create_app() -> FastAPI:
                 Updated skill info
             """
             try:
-                skills_file = "rules/learned_skills.json"
-                if not os.path.exists(skills_file):
-                    raise HTTPException(status_code=404, detail="Skills file not found")
+                from learning.skill_generator import SkillGenerator
+                generator = SkillGenerator()  # Default: use_sqlite=True
 
-                with open(skills_file, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-
-                # Find the skill
-                skill = None
-                for r in data.get("rules", []):
-                    if r.get("id") == skill_id:
-                        skill = r
-                        break
-
+                # Get existing skill
+                skill = generator.get_skill(skill_id)
                 if not skill:
                     raise HTTPException(status_code=404, detail=f"Skill not found: {skill_id}")
 
                 # Update fields
-                if request.enabled is not None:
-                    skill["enabled"] = request.enabled
+                updated_fields = []
 
-                # Save
-                with open(skills_file, "w", encoding="utf-8") as f:
-                    json.dump(data, f, ensure_ascii=False, indent=2)
+                if request.enabled is not None:
+                    generator.update_skill_enabled(skill_id, request.enabled)
+                    skill["enabled"] = request.enabled
+                    updated_fields.append("enabled")
+
+                if request.name is not None:
+                    skill["name"] = request.name
+                    updated_fields.append("name")
+
+                if request.description is not None:
+                    skill["description"] = request.description
+                    updated_fields.append("description")
+
+                if request.trigger_patterns is not None:
+                    skill["trigger"]["patterns"] = request.trigger_patterns
+                    updated_fields.append("trigger_patterns")
+
+                if request.app_context is not None:
+                    skill["trigger"]["app_context"] = request.app_context
+                    updated_fields.append("app_context")
+
+                if request.actions is not None:
+                    skill["actions"] = request.actions
+                    updated_fields.append("actions")
+
+                # Save updated skill to SQLite
+                if updated_fields:
+                    generator.save_skill(skill)
 
                 return {
                     "success": True,
                     "skill_id": skill_id,
-                    "enabled": skill.get("enabled", True)
+                    "updated_fields": updated_fields,
+                    "skill": skill
                 }
 
             except HTTPException:
@@ -744,7 +776,7 @@ def create_app() -> FastAPI:
         @app.delete("/api/v1/skills/{skill_id}")
         async def delete_skill(skill_id: str):
             """
-            Delete a skill from the learned skills file.
+            Delete a skill from storage.
 
             Args:
                 skill_id: The skill ID to delete

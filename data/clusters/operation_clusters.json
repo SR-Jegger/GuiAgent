@@ -3,283 +3,63 @@
   "description": "Operation clusters - auto-generated from VLM operations",
   "clusters": [
     {
-      "cluster_id": "cluster_seq_llm_ab3b8438",
-      "cluster_type": "sequence_llm",
+      "cluster_id": "cluster_7db4c120",
       "pattern": {
-        "instruction_pattern": "打击/侦察目标一栏输入(.*)",
+        "instruction_pattern": "然后在地图上随机点击一个靠地图右侧的位置执行指派",
         "app_context": "React App - 个人 - Microsoft​ Edge Dev",
         "action_structure": [
-          "left_click",
-          "type"
+          "left_click"
         ]
       },
       "members": [
-        "seq_9ce522bd",
-        "seq_138c0b84",
-        "seq_55067441",
-        "seq_b72ea1c9",
-        "seq_acc6e692",
-        "seq_7cccaaf0"
-      ],
-      "sequence_ids": [
-        "seq_9ce522bd",
-        "seq_138c0b84",
-        "seq_55067441",
-        "seq_b72ea1c9",
-        "seq_acc6e692",
-        "seq_7cccaaf0"
+        "2584b648-df1b-47ab-9de2-936c480acad4",
+        "91e547f3-b493-485f-9dd5-fd73a6cae71b",
+        "6bd6ab98-89b3-458d-b199-5b160f1882ef",
+        "a7b9c6d5-e4f3-4a2b-8c1d-9e0f1a2b3c4d"
       ],
       "sample_instructions": [
-        "在打击/侦察目标一栏输入台北市政府",
-        "打击/侦察目标中输入巴厘岛北部",
-        "打击/侦察目标设为洛杉矶市政府",
-        "打击/侦察目标一栏输入 墨西哥基地",
-        "打击/侦察目标一栏输入 温哥华基地"
+        "然后在地图上随机点击一个靠地图右侧的位置执行指派",
+        "然后在地图上随机点击一个靠地图右侧的位置执行指派",
+        "然后在地图上随机点击一个靠地图右侧的位置执行指派",
+        "然后在地图上随机点击一个靠地图右侧的位置执行指派"
       ],
       "sample_actions": [
         {
           "action": "left_click",
           "coordinate": [
-            1075,
-            672
+            1935,
+            563
           ]
-        },
-        {
-          "action": "type",
-          "text": "台北市政府"
         },
         {
           "action": "left_click",
           "coordinate": [
-            1075,
-            671
+            2135,
+            495
           ]
-        },
-        {
-          "action": "type",
-          "text": "巴厘岛北部"
         },
         {
           "action": "left_click",
           "coordinate": [
-            1067,
-            671
+            1873,
+            590
           ]
         },
         {
-          "action": "type",
-          "text": "洛杉矶市政府"
-        }
-      ],
-      "sample_sequences": [
-        {
-          "sequence_id": "seq_9ce522bd",
-          "instruction": "在打击/侦察目标一栏输入台北市政府",
-          "instruction_hash": "8400da71",
-          "actions": [
-            {
-              "action": "left_click",
-              "coordinate": [
-                1075,
-                672
-              ]
-            },
-            {
-              "action": "type",
-              "text": "台北市政府"
-            }
-          ],
-          "action_structure": [
-            "left_click",
-            "type"
-          ]
-        },
-        {
-          "sequence_id": "seq_138c0b84",
-          "instruction": "打击/侦察目标中输入巴厘岛北部",
-          "instruction_hash": "fe00ad8a",
-          "actions": [
-            {
-              "action": "left_click",
-              "coordinate": [
-                1075,
-                671
-              ]
-            },
-            {
-              "action": "type",
-              "text": "巴厘岛北部"
-            }
-          ],
-          "action_structure": [
-            "left_click",
-            "type"
-          ]
-        },
-        {
-          "sequence_id": "seq_55067441",
-          "instruction": "打击/侦察目标设为洛杉矶市政府",
-          "instruction_hash": "19804a5f",
-          "actions": [
-            {
-              "action": "left_click",
-              "coordinate": [
-                1067,
-                671
-              ]
-            },
-            {
-              "action": "type",
-              "text": "洛杉矶市政府"
-            }
-          ],
-          "action_structure": [
-            "left_click",
-            "type"
+          "action": "left_click",
+          "coordinate": [
+            1920,
+            512
           ]
         }
       ],
-      "count": 6,
+      "count": 4,
       "status": "candidate",
-      "created_at": "2026-04-09T15:06:02.288614",
-      "updated_at": "2026-04-09T15:12:24.242332"
+      "created_at": "2026-04-13T17:10:17.799886",
+      "updated_at": "2026-04-13T17:10:17.799886"
     },
     {
-      "cluster_id": "cluster_seq_llm_681b6a64",
-      "cluster_type": "sequence_llm",
-      "pattern": {
-        "instruction_pattern": "任务名称一栏输入(.*)",
-        "app_context": "React App - 个人 - Microsoft​ Edge Dev",
-        "action_structure": [
-          "left_click",
-          "type"
-        ]
-      },
-      "members": [
-        "seq_5befaadc",
-        "seq_8b76ef76",
-        "seq_abfe39ce"
-      ],
-      "sequence_ids": [
-        "seq_5befaadc",
-        "seq_8b76ef76",
-        "seq_abfe39ce"
-      ],
-      "sample_instructions": [
-        "任务名称一栏输入打击任务-C1",
-        "任务名称一栏输入支援行动-9",
-        "任务名称一栏输入封锁任务A1"
-      ],
-      "sample_actions": [
-        {
-          "action": "left_click",
-          "coordinate": [
-            1070,
-            571
-          ]
-        },
-        {
-          "action": "type",
-          "text": "打击任务-C1"
-        },
-        {
-          "action": "left_click",
-          "coordinate": [
-            1070,
-            567
-          ]
-        },
-        {
-          "action": "type",
-          "text": "支援行动-9"
-        },
-        {
-          "action": "left_click",
-          "coordinate": [
-            1070,
-            565
-          ]
-        },
-        {
-          "action": "type",
-          "text": "封锁任务A1"
-        }
-      ],
-      "sample_sequences": [
-        {
-          "sequence_id": "seq_5befaadc",
-          "instruction": "任务名称一栏输入打击任务-C1",
-          "instruction_hash": "f1cc5212",
-          "actions": [
-            {
-              "action": "left_click",
-              "coordinate": [
-                1070,
-                571
-              ]
-            },
-            {
-              "action": "type",
-              "text": "打击任务-C1"
-            }
-          ],
-          "action_structure": [
-            "left_click",
-            "type"
-          ]
-        },
-        {
-          "sequence_id": "seq_8b76ef76",
-          "instruction": "任务名称一栏输入支援行动-9",
-          "instruction_hash": "e3dbe7a7",
-          "actions": [
-            {
-              "action": "left_click",
-              "coordinate": [
-                1070,
-                567
-              ]
-            },
-            {
-              "action": "type",
-              "text": "支援行动-9"
-            }
-          ],
-          "action_structure": [
-            "left_click",
-            "type"
-          ]
-        },
-        {
-          "sequence_id": "seq_abfe39ce",
-          "instruction": "任务名称一栏输入封锁任务A1",
-          "instruction_hash": "0464e4e6",
-          "actions": [
-            {
-              "action": "left_click",
-              "coordinate": [
-                1070,
-                565
-              ]
-            },
-            {
-              "action": "type",
-              "text": "封锁任务A1"
-            }
-          ],
-          "action_structure": [
-            "left_click",
-            "type"
-          ]
-        }
-      ],
-      "count": 3,
-      "status": "candidate",
-      "created_at": "2026-04-09T15:06:05.422167",
-      "updated_at": "2026-04-09T15:12:24.242332"
-    },
-    {
-      "cluster_id": "cluster_fa7c2a21",
+      "cluster_id": "cluster_a92a27bb",
       "pattern": {
         "instruction_pattern": "双击打开Edge Dev浏览器",
         "app_context": "新标签页 - 个人 - Microsoft​ Edge Dev",
@@ -288,6 +68,7 @@
         ]
       },
       "members": [
+        "687c7cf1-fdfe-4cfe-a71f-6fc2c66a1f38",
         "6e16fc3b-6b0a-40f7-a54f-98273494f7f4",
         "6e16fc3b-6b0a-40f7-a54f-98273494f7f4",
         "2bccd52d-c3b0-4afd-bb2d-9b85d97a2c53",
@@ -297,9 +78,17 @@
         "双击打开Edge Dev浏览器",
         "双击打开Edge Dev浏览器",
         "双击打开Edge Dev浏览器",
+        "双击打开Edge Dev浏览器",
         "双击打开Edge Dev浏览器"
       ],
       "sample_actions": [
+        {
+          "action": "double_click",
+          "coordinate": [
+            230,
+            750
+          ]
+        },
         {
           "action": "double_click",
           "coordinate": [
@@ -329,60 +118,13 @@
           ]
         }
       ],
-      "count": 4,
-      "status": "approved",
-      "created_at": "2026-04-09T15:12:24.242332",
-      "updated_at": "2026-04-09T15:12:31.315661"
-    },
-    {
-      "cluster_id": "cluster_677a3505",
-      "pattern": {
-        "instruction_pattern": "然后在地图上随机点击一个靠地图右侧的位置执行指派",
-        "app_context": "React App - 个人 - Microsoft​ Edge Dev",
-        "action_structure": [
-          "left_click"
-        ]
-      },
-      "members": [
-        "91e547f3-b493-485f-9dd5-fd73a6cae71b",
-        "6bd6ab98-89b3-458d-b199-5b160f1882ef",
-        "a7b9c6d5-e4f3-4a2b-8c1d-9e0f1a2b3c4d"
-      ],
-      "sample_instructions": [
-        "然后在地图上随机点击一个靠地图右侧的位置执行指派",
-        "然后在地图上随机点击一个靠地图右侧的位置执行指派",
-        "然后在地图上随机点击一个靠地图右侧的位置执行指派"
-      ],
-      "sample_actions": [
-        {
-          "action": "left_click",
-          "coordinate": [
-            2135,
-            495
-          ]
-        },
-        {
-          "action": "left_click",
-          "coordinate": [
-            1873,
-            590
-          ]
-        },
-        {
-          "action": "left_click",
-          "coordinate": [
-            1920,
-            512
-          ]
-        }
-      ],
-      "count": 3,
+      "count": 5,
       "status": "candidate",
-      "created_at": "2026-04-09T15:12:24.242332",
-      "updated_at": "2026-04-09T15:12:24.242332"
+      "created_at": "2026-04-13T17:10:17.799886",
+      "updated_at": "2026-04-13T17:10:17.799886"
     }
   ],
   "updated_at": "2026-04-08T12:00:00.000000",
-  "last_scan": "2026-04-09T15:12:24.242332",
-  "last_scan_log_id": "6e16fc3b-6b0a-40f7-a54f-98273494f7f4"
+  "last_scan": "2026-04-13T17:10:17.802443",
+  "last_scan_log_id": "2584b648-df1b-47ab-9de2-936c480acad4"
 }
