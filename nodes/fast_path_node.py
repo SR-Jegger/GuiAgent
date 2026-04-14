@@ -10,6 +10,8 @@ from typing import TYPE_CHECKING
 from nodes.types import AgentState
 from utils.computer_tools import ComputerTools
 from rule_matcher import RuleMatcher
+from utils.action_resolver import ActionResolver, needs_resolution
+from utils.ocr_locator import OCRLocator
 
 
 def fast_path_node(state: AgentState) -> AgentState:
@@ -79,6 +81,31 @@ def fast_path_node(state: AgentState) -> AgentState:
         rule_actions = result.get("actions", [])
         rule_source = result.get("source", "manual")
         rule_confidence = result.get("confidence", 1.0)
+
+        # 【新增】检测是否需要占位符解析
+        if needs_resolution(rule_actions):
+            print(f"[FAST_PATH] 检测到占位符，需要解析动态坐标")
+
+            # 获取截图（从capture_node提供）
+            screenshot_array = state.get("screenshot_array")
+            if screenshot_array is None:
+                print(f"[FAST_PATH] 警告：无截图，无法进行OCR定位")
+
+            # 初始化解析器
+            ocr_locator = OCRLocator()
+            resolver = ActionResolver(ocr_locator)
+
+            # 解析占位符
+            match_groups = result.get("match_groups", ())
+            resolved_actions = resolver.resolve_actions(
+                rule_actions,
+                match_groups,
+                screenshot_array
+            )
+
+            print(f"[FAST_PATH] 占位符解析完成，生成 {len(resolved_actions)} 个动作")
+            rule_actions = resolved_actions  # 使用解析后的动作
+
         vlm_actions = []
 
         for action in rule_actions:
