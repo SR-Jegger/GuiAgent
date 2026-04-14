@@ -1,0 +1,26 @@
+{
+  "version": "1.0",
+  "description": "手动定义的参数化技能，支持动态坐标定位",
+  "rules": [
+    {
+      "id": "manual_054ceff1",
+      "name": "指派任务给飞机",
+      "description": "右键点击指定飞机卡片，选择指派任务",
+      "source": "manual",
+      "trigger": {
+        "patterns": ["指派任务给(.+)飞机"]
+      },
+      "actions": [
+        {
+          "type": "right_click",
+          "coordinate": "{{ocr:{{match_group_1}}}}"
+        },
+        {
+          "type": "click",
+          "coordinate": "{{prev_x+20}}, {{prev_y+120}}"
+        }
+      ],
+      "enabled": true
+    }
+  ]
+}
