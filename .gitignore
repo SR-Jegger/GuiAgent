@@ -17,3 +17,7 @@ __pycache__/
 # IDE
 .vscode/
 .idea/
+
+# Records of conversations
+docs/
+.claude/

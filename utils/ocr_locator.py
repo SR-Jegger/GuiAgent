@@ -2,11 +2,17 @@
 
 This module provides OCR-based element location using PaddleOCR,
 supporting exact, partial, and fuzzy text matching.
-"""
+
+OCR自己截图,不依赖capture_node提供的截图。"""
+import os
 import logging
+import pyautogui
 from typing import Optional, Tuple, List, Any
 
 import numpy as np
+
+# 跳过PaddleOCR模型源连接检查
+os.environ['PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK'] = 'True'
 
 logger = logging.getLogger(__name__)
 
@@ -33,19 +39,68 @@ class OCRLocator:
         """
         try:
             from paddleocr import PaddleOCR
-            self.ocr = PaddleOCR(
-                use_angle_cls=True,
-                lang="ch",
-                use_gpu=use_gpu,
-                show_log=False
-            )
-            logger.info(f"OCRLocator initialized (use_gpu={use_gpu})")
+            from pathlib import Path
+
+            # 使用本地模型目录，避免重复下载
+            project_root = Path(__file__).parent.parent
+            model_dir = project_root / "models" / "paddleocr"
+
+            # 检查模型目录是否存在
+            if not model_dir.exists():
+                print(f"[OCR] Warning: Model directory not found at {model_dir}")
+                print(f"[OCR] Falling back to auto-download")
+                self.ocr = PaddleOCR(use_angle_cls=False, lang='ch')
+            else:
+                # 使用本地模型 - 使用正确的参数名
+                det_model_dir = model_dir / "PP-OCRv5_server_det"
+                rec_model_dir = model_dir / "PP-OCRv5_server_rec"
+
+                # PaddleOCR 新版本的参数名是 det_model_dir 和 rec_model_dir
+                self.ocr = PaddleOCR(
+                    text_detection_model_dir=str(det_model_dir),
+                    text_recognition_model_dir=str(rec_model_dir),
+                    use_doc_orientation_classify=False,
+                    use_doc_unwarping=False,
+                    use_textline_orientation=False,
+                    # doc_unwarping_model_dir="UVDoc",
+                    # doc_orientation_classify_model_dir="LCNet_x1_0_doc_ori",
+                    # textline_orientation_model_dir="PP-LCNet_x1_0_textline_ori",
+                    lang='ch',
+                )
+                print(f"[OCR] OCRLocator initialized with local models from {model_dir}")
+
+            # 检测 OCR 版本和 API
+            # 强制使用旧的 ocr() API，因为 predict() 在某些环境下会崩溃
+            self._use_predict_api = True
+            print(f"[OCR] Using ocr() API (legacy version, forced for stability)")
+            # 注释：predict() API 在 oneDNN 环境下可能不稳定，使用 ocr() 更稳定
         except ImportError as e:
-            logger.error("PaddleOCR not installed. Install with: pip install paddleocr")
+            print(f"[OCR] PaddleOCR not installed. Install with: pip install paddleocr")
             raise ImportError(
                 "PaddleOCR is required for OCR-based element location. "
                 "Install with: pip install paddleocr"
             ) from e
+
+    def capture_screenshot(self) -> np.ndarray:
+        """Capture current screen as numpy array for OCR.
+
+        OCR自己截图, 不依赖capture_node提供的截图。
+        Returns:
+            Numpy array of screenshot (BGR format for PaddleOCR).
+        """
+        try:
+            # 使用pyautogui截图
+            screenshot = pyautogui.screenshot()
+            # 转换为numpy array (RGB)
+            screenshot_array = np.array(screenshot)
+            # 转换为BGR格式（PaddleOCR期望的格式）
+            # 使用 ascontiguousarray 确保数组内存布局正确，防止 C++ 层崩溃
+            screenshot_bgr = np.ascontiguousarray(screenshot_array[:, :, ::-1])
+            print(f"[OCR] Captured screenshot: shape={screenshot_bgr.shape}, dtype={screenshot_bgr.dtype}, contiguous={screenshot_bgr.flags['C_CONTIGUOUS']}")
+            return screenshot_bgr
+        except Exception as e:
+            print(f"[OCR] Failed to capture screenshot: {e}")
+            return None
 
     def locate_element(
         self,
@@ -71,38 +126,81 @@ class OCRLocator:
             logger.warning("Empty target text provided")
             return None
 
+        print(f"[OCR] locate_element called: target='{target_text}', screenshot shape={screenshot.shape if screenshot is not None else 'None'}")
+
         try:
             # Run OCR recognition
-            result = self.ocr.ocr(screenshot, cls=True)
+            if self._use_predict_api:
+                print(f"[OCR] Calling predict()...")
+                # 新版本 API: predict() 返回 list，第一个元素是 dict
+                # list[0] = {'dt_polys': ..., 'rec_texts': ..., 'rec_scores': ..., 'rec_polys': ...}
+                result_list = self.ocr.predict(screenshot)
+                print(f"[OCR] predict() returned: {type(result_list)}, len={len(result_list) if result_list else 0}")
 
-            if result is None or len(result) == 0 or result[0] is None:
-                logger.debug("No text detected in screenshot")
-                return None
+                if not result_list or len(result_list) == 0:
+                    logger.debug("No text detected in screenshot")
+                    return None
 
-            # Search for matching text
-            for line in result[0]:
-                if line is None:
-                    continue
+                result = result_list[0]  # 取第一个元素（字典）
+                print(f"[OCR] result keys: {result.keys() if hasattr(result, 'keys') else 'N/A'}")
 
-                box = line[0]  # Bounding box coordinates
-                text_info = line[1]  # (text, confidence)
+                if 'rec_texts' not in result or 'rec_polys' not in result:
+                    logger.debug("No text detected in screenshot")
+                    return None
 
-                if len(text_info) != 2:
-                    continue
+                # 使用 rec_polys（识别多边形）而非 dt_polys（检测多边形），因为 rec_polys 更准确
+                polyps = result['rec_polys']
+                rec_texts = result['rec_texts']
+                rec_scores = result.get('rec_scores', [1.0] * len(rec_texts))
 
-                recognized_text, confidence = text_info
+                print(f"[OCR] Found {len(rec_texts)} texts, searching for '{target_text}'")
+                
+                for i, (box, text) in enumerate(zip(polyps, rec_texts)):
+                    confidence = rec_scores[i] if i < len(rec_scores) else 1.0
 
-                if self._text_matches(target_text, recognized_text, threshold):
-                    # Calculate center of bounding box
-                    # box format: [[x1,y1], [x2,y2], [x3,y3], [x4,y4]]
-                    center_x = int((box[0][0] + box[2][0]) / 2)
-                    center_y = int((box[0][1] + box[2][1]) / 2)
+                    if self._text_matches(target_text, text, threshold):
+                        # box shape: (4, 2) array [[x1,y1], [x2,y2], [x3,y3], [x4,y4]]
+                        center_x = int((box[:, 0].min() + box[:, 0].max()) / 2)
+                        center_y = int((box[:, 1].min() + box[:, 1].max()) / 2)
 
-                    logger.info(
-                        f"Found '{recognized_text}' matching '{target_text}' "
-                        f"at ({center_x}, {center_y}) with confidence {confidence:.2f}"
-                    )
-                    return (center_x, center_y)
+                        logger.info(
+                            f"Found '{text}' matching '{target_text}' "
+                            f"at ({center_x}, {center_y}) with confidence {confidence:.2f}"
+                        )
+                        return (center_x, center_y)
+            else:
+                # 旧版本 API: ocr() 返回 [[[box], (text, conf)], ...]
+                print(f"[OCR] Calling ocr()...")
+                result = self.ocr.ocr(screenshot)
+                print(f"[OCR] ocr() returned: {type(result)}")
+
+                if result is None or len(result) == 0 or result[0] is None:
+                    logger.debug("No text detected in screenshot")
+                    return None
+
+                print(f"[OCR] Found {len(result[0])} texts, searching for '{target_text}'")
+
+                for line in result[0]:
+                    if line is None:
+                        continue
+
+                    box = line[0]
+                    text_info = line[1]
+
+                    if len(text_info) != 2:
+                        continue
+
+                    recognized_text, confidence = text_info
+
+                    if self._text_matches(target_text, recognized_text, threshold):
+                        center_x = int((box[0][0] + box[2][0]) / 2)
+                        center_y = int((box[0][1] + box[2][1]) / 2)
+
+                        logger.info(
+                            f"Found '{recognized_text}' matching '{target_text}' "
+                            f"at ({center_x}, {center_y}) with confidence {confidence:.2f}"
+                        )
+                        return (center_x, center_y)
 
             logger.debug(f"No matching text found for '{target_text}'")
             return None
@@ -131,31 +229,29 @@ class OCRLocator:
             return []
 
         try:
-            result = self.ocr.ocr(screenshot, cls=True)
-
-            if result is None or len(result) == 0 or result[0] is None:
+            # 只用新版本 OCR API: predict() 返回 list[dict]
+            result_list = self.ocr.predict(screenshot)
+            if not result_list or len(result_list) == 0:
                 return []
 
+            result = result_list[0]
+            if 'rec_texts' not in result or 'rec_polys' not in result:
+                return []
+
+            # 使用 rec_polys（识别多边形）而非 dt_polys（检测多边形）
+            polyps = result['rec_polys']
+            rec_texts = result['rec_texts']
+            rec_scores = result.get('rec_scores', [1.0] * len(rec_texts))
+
             coordinates = []
-            for line in result[0]:
-                if line is None:
-                    continue
-
-                box = line[0]
-                text_info = line[1]
-
-                if len(text_info) != 2:
-                    continue
-
-                recognized_text, confidence = text_info
-
-                if self._text_matches(target_text, recognized_text, threshold):
-                    center_x = int((box[0][0] + box[2][0]) / 2)
-                    center_y = int((box[0][1] + box[2][1]) / 2)
+            for i, (box, text) in enumerate(zip(polyps, rec_texts)):
+                confidence = rec_scores[i] if i < len(rec_scores) else 1.0
+                if self._text_matches(target_text, text, threshold):
+                    center_x = int((box[:, 0].min() + box[:, 0].max()) / 2)
+                    center_y = int((box[:, 1].min() + box[:, 1].max()) / 2)
                     coordinates.append((center_x, center_y))
 
             return coordinates
-
         except Exception as e:
             logger.error(f"OCR recognition failed: {e}")
             return []
@@ -176,33 +272,60 @@ class OCRLocator:
             return []
 
         try:
-            result = self.ocr.ocr(screenshot, cls=True)
+            if self._use_predict_api:
+                # 新版本 API: predict() 返回 list[dict]
+                result_list = self.ocr.predict(screenshot)
+                if not result_list or len(result_list) == 0:
+                    return []
 
-            if result is None or len(result) == 0 or result[0] is None:
-                return []
+                result = result_list[0]
+                if 'rec_texts' not in result or 'rec_polys' not in result:
+                    return []
 
-            text_list = []
-            for line in result[0]:
-                if line is None:
-                    continue
+                # 使用 rec_polys（识别多边形）而非 dt_polys（检测多边形）
+                polyps = result['rec_polys']
+                rec_texts = result['rec_texts']
+                rec_scores = result.get('rec_scores', [1.0] * len(rec_texts))
 
-                box = line[0]
-                text_info = line[1]
+                text_list = []
+                for i, (box, text) in enumerate(zip(polyps, rec_texts)):
+                    confidence = rec_scores[i] if i < len(rec_scores) else 1.0
+                    x = int(box[:, 0].min())
+                    y = int(box[:, 1].min())
+                    w = int(box[:, 0].max() - box[:, 0].min())
+                    h = int(box[:, 1].max() - box[:, 1].min())
+                    text_list.append((text, (x, y, w, h), confidence))
 
-                if len(text_info) != 2:
-                    continue
+                return text_list
+            else:
+                # 旧版本 API
+                result = self.ocr.ocr(screenshot)
 
-                text, confidence = text_info
+                if result is None or len(result) == 0 or result[0] is None:
+                    return []
 
-                # Calculate bounding box dimensions
-                x = int(box[0][0])
-                y = int(box[0][1])
-                width = int(box[1][0] - box[0][0])
-                height = int(box[2][1] - box[0][1])
+                text_list = []
+                for line in result[0]:
+                    if line is None:
+                        continue
 
-                text_list.append((text, (x, y, width, height), confidence))
+                    box = line[0]
+                    text_info = line[1]
 
-            return text_list
+                    if len(text_info) != 2:
+                        continue
+
+                    text, confidence = text_info
+
+                    # Calculate bounding box dimensions
+                    x = int(box[0][0])
+                    y = int(box[0][1])
+                    width = int(box[1][0] - box[0][0])
+                    height = int(box[2][1] - box[0][1])
+
+                    text_list.append((text, (x, y, width, height), confidence))
+
+                return text_list
 
         except Exception as e:
             logger.error(f"OCR recognition failed: {e}")
@@ -215,19 +338,13 @@ class OCRLocator:
         threshold: float
     ) -> bool:
         """Check if recognized text matches target text.
-
-        Supports three matching strategies:
-        1. Exact match (threshold == 1.0)
-        2. Contains match (target in recognized)
-        3. Fuzzy similarity match (using similarity ratio)
-
+        Uses exact match (case-insensitive).
         Args:
             target: The target text to match.
             recognized: The recognized text from OCR.
-            threshold: Matching threshold (0.0-1.0).
-
+            threshold: Matching threshold (unused for exact match).
         Returns:
-            True if the texts match according to threshold criteria.
+            True if the texts match exactly (case-insensitive).
         """
         if not target or not recognized:
             return False
@@ -236,61 +353,5 @@ class OCRLocator:
         target_normalized = target.strip().lower()
         recognized_normalized = recognized.strip().lower()
 
-        # Exact match
-        if threshold >= 1.0:
-            return target_normalized == recognized_normalized
-
-        # Contains match (target is substring of recognized)
-        if target_normalized in recognized_normalized:
-            return True
-
-        # Reverse contains match (recognized is substring of target)
-        if recognized_normalized in target_normalized:
-            return True
-
-        # Fuzzy similarity match using character overlap ratio
-        similarity = OCRLocator._calculate_similarity(target_normalized, recognized_normalized)
-        return similarity >= threshold
-
-    @staticmethod
-    def _calculate_similarity(text1: str, text2: str) -> float:
-        """Calculate character-level similarity between two texts.
-
-        Uses a simple character overlap ratio with position consideration.
-
-        Args:
-            text1: First text.
-            text2: Second text.
-
-        Returns:
-            Similarity ratio (0.0-1.0).
-        """
-        if not text1 or not text2:
-            return 0.0
-
-        # Use longest common subsequence ratio
-        len1 = len(text1)
-        len2 = len(text2)
-
-        # Simple character set overlap for quick matching
-        set1 = set(text1)
-        set2 = set(text2)
-
-        if not set1 or not set2:
-            return 0.0
-
-        # Calculate intersection ratio
-        intersection = len(set1 & set2)
-        union = len(set1 | set2)
-
-        if union == 0:
-            return 0.0
-
-        # Jaccard similarity
-        jaccard = intersection / union
-
-        # Also consider length similarity
-        length_ratio = min(len1, len2) / max(len1, len2)
-
-        # Combined score
-        return (jaccard * 0.6 + length_ratio * 0.4)
+        # Exact match only
+        return target_normalized == recognized_normalized

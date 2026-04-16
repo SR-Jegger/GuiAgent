@@ -20,6 +20,28 @@
           "coordinate": "{{prev_x+20}}, {{prev_y+120}}"
         }
       ],
+      "enabled": false
+    },
+    {
+      "id": "manual_054ceff2",
+      "name": "指派任务",
+      "description": "对指定飞机执行指派任务功能",
+      "source": "manual",
+      "trigger": {
+        "patterns": [
+          "指派任务给(.*)飞机"
+        ]
+      },
+      "actions": [
+        {
+          "type": "right_click",
+          "coordinate": "{{ocr:{{match_group_1}}}}"
+        },
+        {
+          "type": "click",
+          "coordinate": "{{prev_x+20}}, {{prev_y+120}}"
+        }
+      ],
       "enabled": true
     }
   ]

@@ -25,6 +25,7 @@ from pydantic import BaseModel
 
 from agent_graph import build_agent_graph_simple, run_agent_async, AgentState
 from utils.utils import get_output_dir
+from nodes.fast_path_node import get_ocr_locator  # OCR 预加载
 
 
 # ============================================================================
@@ -353,6 +354,10 @@ async def lifespan(app: FastAPI):
 
     # Compile agent graph (hot-start optimization)
     task_manager.compile_agent()
+
+    # Preload OCR model (hot-start optimization)
+    print("[Server] Preloading OCR model...")
+    get_ocr_locator()
 
     # Start workers
     await task_manager.start()

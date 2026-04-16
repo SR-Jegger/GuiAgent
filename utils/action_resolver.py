@@ -96,7 +96,7 @@ class ActionResolver:
                 )
                 resolved_action["coordinate"] = resolved_coord
 
-                # Update previous coordinate for subsequent actions
+                # 解析 coordinate 字段，成功后更新 prev_x/prev_y
                 if resolved_coord is not None:
                     self.set_prev_coordinate(resolved_coord[0], resolved_coord[1])
 
@@ -143,13 +143,24 @@ class ActionResolver:
         if isinstance(coord_expr, str):
             # Check for OCR placeholder
             ocr_match = OCR_PLACEHOLDER_PATTERN.search(coord_expr)
+            print(f"[OCR] Resolving coordinate expression: {coord_expr}")
             if ocr_match:
                 target_text = ocr_match.group(1)
-                return self._resolve_ocr_coordinate(target_text, screenshot)
+                # 替换内部的 match_group 占位符
+                resolved_target = self._replace_match_groups(target_text, match_groups)
+                print(f"[OCR] Resolved OCR target text: {resolved_target}")
+
+                try:
+                    return self._resolve_ocr_coordinate(resolved_target, screenshot)
+                except Exception as e:
+                    logger.error(f"OCR coordinate resolution failed: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    return None
 
             # Replace match groups first
             resolved_expr = self._replace_match_groups(coord_expr, match_groups)
-
+            print(f"[OCR] Resolved coordinate expression: {resolved_expr}")
             # Check for offset placeholders (prev_x/prev_y)
             offset_result = self._resolve_offset_expression(resolved_expr)
             if offset_result:
@@ -178,6 +189,7 @@ class ActionResolver:
             ValueError: If OCR locator not available.
         """
         if self.ocr_locator is None:
+            print(f"[OCR] Error: OCR locator not initialized, cannot resolve '{target_text}'")
             raise ValueError(
                 "OCR locator required for OCR placeholder resolution. "
                 "Initialize ActionResolver with ocr_locator parameter."
@@ -190,6 +202,7 @@ class ActionResolver:
         try:
             result = self.ocr_locator.locate_element(target_text, screenshot)
             if result:
+                print(f"[OCR] Located '{target_text}' at {result}")
                 logger.info(f"OCR located '{target_text}' at {result}")
                 return result
             else:
@@ -224,7 +237,7 @@ class ActionResolver:
             )
             return None
 
-        # Handle single placeholder case (like "{{prev_x+20}}")
+        # 处理单坐标偏移(只修改X或Y) (like "{{prev_x+20}}")
         if len(matches) == 1:
             axis, offset_str = matches[0]
             offset = int(offset_str) if offset_str else 0
@@ -234,7 +247,7 @@ class ActionResolver:
             else:
                 return (self.prev_x, self.prev_y + offset)
 
-        # Handle dual placeholder case (like "{{prev_x+10}},{{prev_y-20}}")
+        # 处理双坐标偏移 (like "{{prev_x+10}},{{prev_y-20}}")
         x_offset = 0
         y_offset = 0
 
@@ -278,7 +291,6 @@ class ActionResolver:
 
         return result
 
-    
     def _parse_coordinate_string(
         self,
         expr: str

@@ -5,6 +5,7 @@ Responsible for rule-based quick matching before VLM reasoning.
 """
 
 import time
+import threading
 from typing import TYPE_CHECKING
 
 from nodes.types import AgentState
@@ -12,6 +13,19 @@ from utils.computer_tools import ComputerTools
 from rule_matcher import RuleMatcher
 from utils.action_resolver import ActionResolver, needs_resolution
 from utils.ocr_locator import OCRLocator
+
+# 全局单例 OCRLocator，避免每次冷启动加载模型
+_ocr_locator_instance: OCRLocator = None
+_ocr_lock = threading.Lock()  # OCR 调用锁，防止并发崩溃
+
+
+def get_ocr_locator() -> OCRLocator:
+    """获取全局 OCRLocator 单例实例，避免重复初始化模型"""
+    global _ocr_locator_instance
+    if _ocr_locator_instance is None:
+        print("[FAST_PATH] 初始化 OCRLocator 单例...")
+        _ocr_locator_instance = OCRLocator()
+    return _ocr_locator_instance
 
 
 def fast_path_node(state: AgentState) -> AgentState:
@@ -82,34 +96,65 @@ def fast_path_node(state: AgentState) -> AgentState:
         rule_source = result.get("source", "manual")
         rule_confidence = result.get("confidence", 1.0)
 
-        # 【新增】检测是否需要占位符解析
+        # 检测是否需要占位符解析
         if needs_resolution(rule_actions):
             print(f"[FAST_PATH] 检测到占位符，需要解析动态坐标")
 
-            # 获取截图（从capture_node提供）
-            screenshot_array = state.get("screenshot_array")
-            if screenshot_array is None:
-                print(f"[FAST_PATH] 警告：无截图，无法进行OCR定位")
+            try:
+                # 等待界面加载完成（特别是导航类动作后需要等待）
+                wait_time = state.get("ocr_wait_time", 2.0)  # 默认等待2秒
+                print(f"[FAST_PATH] 等待 {wait_time} 秒让界面加载完成...")
+                time.sleep(wait_time)
 
-            # 初始化解析器
-            ocr_locator = OCRLocator()
-            resolver = ActionResolver(ocr_locator)
+                # OCR自己截图，不依赖capture_node
+                # 使用单例 OCRLocator，避免每次冷启动
+                ocr_locator = get_ocr_locator()
+                screenshot_array = ocr_locator.capture_screenshot()
+                if screenshot_array is None:
+                    print(f"[FAST_PATH] 警告:OCR截图失败, 无法进行定位")
+                    # 回退到 VLM reasoning
+                    return {
+                        "fast_path_matched": False,
+                        "execution_status": "success",
+                        "tools": tools,
+                    }
 
-            # 解析占位符
-            match_groups = result.get("match_groups", ())
-            resolved_actions = resolver.resolve_actions(
-                rule_actions,
-                match_groups,
-                screenshot_array
-            )
+                # 初始化解析器
+                resolver = ActionResolver(ocr_locator)
 
-            print(f"[FAST_PATH] 占位符解析完成，生成 {len(resolved_actions)} 个动作")
-            rule_actions = resolved_actions  # 使用解析后的动作
+                # 解析占位符
+                match_groups = result.get("match_groups", ())
+                resolved_actions = resolver.resolve_actions(
+                    rule_actions,
+                    match_groups,
+                    screenshot_array
+                )
+
+                print(f"[FAST_PATH] 占位符解析完成，生成 {len(resolved_actions)} 个动作")
+                rule_actions = resolved_actions  # 使用解析后的动作
+
+            except Exception as e:
+                print(f"[FAST_PATH] 错误：OCR解析失败: {e}")
+                import traceback
+                traceback.print_exc()
+                # 回退到 VLM reasoning
+                return {
+                    "fast_path_matched": False,
+                    "execution_status": "success",
+                    "tools": tools,
+                }
 
         vlm_actions = []
 
         for action in rule_actions:
             action_type = action.get("type", "")
+            coordinate = action.get("coordinate")
+
+            # 跳过无法解析坐标的点击动作并打印警告
+            if action_type in ("click", "left_click", "right_click", "middle_click", "double_click"):
+                if coordinate is None:
+                    print(f"[FAST_PATH] 警告：动作 '{action_type}' 坐标解析失败，跳过该动作")
+                    continue
 
             # Convert action format: {"type": "hotkey"} -> {"name": "computer_use", "arguments": {"action": "hotkey"}}
             vlm_action = {
@@ -134,6 +179,15 @@ def fast_path_node(state: AgentState) -> AgentState:
         source_label = "LEARNED" if rule_source == "learned" else "MANUAL"
         print(f"[FAST_PATH] Matched rule: {result['rule_name']} ({result['rule_id']}) [{source_label}]")
         print(f"[FAST_PATH] Converted {len(vlm_actions)} action(s) to VLM format (confidence: {rule_confidence})")
+
+        # 如果所有动作都被跳过，回退到 VLM reasoning
+        if len(vlm_actions) == 0:
+            print("[FAST_PATH] 所有动作坐标解析失败，回退到 VLM reasoning")
+            return {
+                "fast_path_matched": False,
+                "execution_status": "success",
+                "tools": tools,
+            }
 
         return {
             "fast_path_matched": True,
