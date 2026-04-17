@@ -49,8 +49,8 @@
 
   如果想并行执行多个任务？
 
-  修改 TaskManager 的 worker 数量即可：
-  server.py中的  task_manager = TaskManager(max_concurrent=3)  # 3 个 worker 并行
+  修改 AgentApplicationService 的 worker 数量即可：
+  server.py中的  agent_service = AgentApplicationService(max_concurrent=3)  # 3 个 worker 并行
 
   但 GUI 自动化场景下，通常不建议并行，因为：
   - 鼠标/键盘是共享资源
@@ -148,7 +148,7 @@
 ---
 
 ## 疑惑解答1
-### ❯ create_app()里我只在create_task里运行了task_manager.submit(task)，并没有start，那么任务是怎么开始运行的?
+### ❯ create_app()里我只在create_task里运行了agent_service.submit(task)，并没有start，那么任务是怎么开始运行的?
 
 ● 好问题！关键在于 submit() 之后，任务是被 后台 Worker 自动取走执行的。
 
@@ -156,7 +156,7 @@
 
   Read 1 file (ctrl+o to expand)
 
-● 看到了！关键是 lifespan 中的 await task_manager.start() 在服务器启动时就运行了。
+● 看到了！关键是 lifespan 中的 await agent_service.start() 在服务器启动时就运行了。
 
   完整流程
 
@@ -164,7 +164,7 @@
   │  1. 服务器启动时（lifespan startup）                          │
   ├─────────────────────────────────────────────────────────────┤
   │                                                              │
-  │  await task_manager.start()                                  │
+  │  await agent_service.start()                                  │
   │           │                                                   │
   │           ▼                                                   │
   │  启动 Worker 协程（后台运行）                                   │
@@ -181,7 +181,7 @@
   │  2. 用户请求创建任务时（create_task）                         │
   ├─────────────────────────────────────────────────────────────┤
   │                                                              │
-  │  await task_manager.submit(task)                             │
+  │  await agent_service.submit(task)                             │
   │           │                                                   │
   │           ▼                                                   │
   │  await self._queue.put(task)  ← 放入队列                     │
@@ -207,9 +207,9 @@
   ┌─────────────┬───────────────────────────────────────┬──────────────────────┐
   │    时机     │               代码位置                │         动作         │
   ├─────────────┼───────────────────────────────────────┼──────────────────────┤
-  │ 服务器启动  │ lifespan() → task_manager.start()     │ 启动 Worker 后台运行 │
+  │ 服务器启动  │ lifespan() → agent_service.start()     │ 启动 Worker 后台运行 │
   ├─────────────┼───────────────────────────────────────┼──────────────────────┤
-  │ 收到请求    │ create_task() → task_manager.submit() │ 任务加入队列         │
+  │ 收到请求    │ create_task() → agent_service.submit() │ 任务加入队列         │
   ├─────────────┼───────────────────────────────────────┼──────────────────────┤
   │ Worker 执行 │ _worker() → _execute_task()           │ 从队列取任务并执行   │
   └─────────────┴───────────────────────────────────────┴──────────────────────┘

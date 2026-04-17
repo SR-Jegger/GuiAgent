@@ -163,7 +163,7 @@ def build_agent_graph() -> StateGraph:
     def reasoning_router(state: AgentState) -> Literal["sub_end", "judge", "error_handler"]:
         # if state.get("stop_flag"):
         #     return "END"
-        if not state.get("sub_flag") and state.get("execution_status") == "success":
+        if not state.get("continue_substep_flag") and state.get("execution_status") == "success":
             return "sub_end"
         elif state.get("execution_status") == "success":
             return "judge"
@@ -186,9 +186,9 @@ def build_agent_graph() -> StateGraph:
     def execution_router(state: AgentState) -> Literal["continue", "error_handler", "END"]:
         if state.get("stop_flag"):
             return "END"
-        if not state.get("sub_flag") and state.get("execution_status") == "success":
+        if not state.get("continue_substep_flag") and state.get("execution_status") == "success":
             return "continue_next"
-        if state.get("sub_flag") and state.get("execution_status") == "success":
+        if state.get("continue_substep_flag") and state.get("execution_status") == "success":
             return "continue_current"
         return "error_handler"
 
@@ -358,7 +358,7 @@ def build_agent_graph_simple() -> StateGraph:
     def reasoning_router(state: AgentState) -> Literal["sub_end", "execution", "error_handler"]:
         # if state.get("stop_flag"):
         #     return "END"
-        if not state.get("sub_flag") and state.get("execution_status") == "success":
+        if not state.get("continue_substep_flag") and state.get("execution_status") == "success":
             return "sub_end"
         elif state.get("execution_status") == "success":
             return "execution"
@@ -368,9 +368,9 @@ def build_agent_graph_simple() -> StateGraph:
         # 这个END指的是当前的子任务是否被判断为完成，而不是整个task的结束。continue_handler会根据sub_steps和current_step_index来决定是进入下一步的fast_path还是结束整个task。
         if state.get("stop_flag"):
             return "END"
-        if not state.get("sub_flag") and state.get("execution_status") == "success":
+        if not state.get("continue_substep_flag") and state.get("execution_status") == "success":
             return "continue_next"
-        if state.get("sub_flag") and state.get("execution_status") == "success":
+        if state.get("continue_substep_flag") and state.get("execution_status") == "success":
             return "continue_current"
         return "error_handler"
 
@@ -520,7 +520,7 @@ async def run_agent_async(
         "error_message": None,
         "retry_count": 0,
         "stop_flag": False,
-        "sub_flag": True,
+        "continue_substep_flag": True,
         "history": [],
         "output_dir": get_output_dir(),
         "stop_event": stop_event,  # Pass stop_event to state for node-level cancellation check

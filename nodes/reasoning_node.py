@@ -77,7 +77,6 @@ def reasoning_node(state: AgentState) -> AgentState:
     model = vlm_config["model"]
     base_url = vlm_config["base_url"]
     api_key = vlm_config["api_key"]
-    FLAG = False
     continue_substep_flag = True  # signal to continue to next sub-step by default
 
     if not screenshot_path or not os.path.exists(screenshot_path):
@@ -110,22 +109,10 @@ def reasoning_node(state: AgentState) -> AgentState:
                             item["text"] += f"\n\nAdditional Info: {add_info}"
                     break
 
-        # For multi-step tasks, add global task context to the message
-        # if task_instruction and task_instruction != current_instruction:
-        #     for msg in reversed(messages):
-        #         if msg.get("role") == "user":
-        #             content = msg.get("content", [])
-        #             for item in content:
-        #                 if item.get("type") == "text":
-        #                     item["text"] += f"\n\nOverall Task Context: {task_instruction}"
-        #             break
-
         # Initialize VLM wrapper
         # vllm = GUIOwlWrapper(api_key, base_url, model)
-
         # Call VLM
         # output_text, raw_messages, raw_response = vllm.predict_mm(messages)
-
         # Parse response for reasoning content
         # llm_response = output_text
 
@@ -170,7 +157,6 @@ def reasoning_node(state: AgentState) -> AgentState:
                 #     height=540,
                 # )
                 
-                # FLAG = True  # signal to stop
                 continue_substep_flag = False  # signal to not continue to current sub-step
                 print("[REASONING] Stop signal received")
                 break
@@ -179,8 +165,7 @@ def reasoning_node(state: AgentState) -> AgentState:
             "llm_response": llm_response,
             "messages": messages,
             "execution_status": "success",
-            "stop_flag": FLAG,
-            "sub_flag": continue_substep_flag,
+            "continue_substep_flag": continue_substep_flag,
             "error_message": None,
             "retry_count": 0,
         }
