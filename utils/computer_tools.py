@@ -5,11 +5,11 @@ Computer interaction tools - Desktop GUI automation via pyautogui.
 import os
 import sys
 import time
-
+import uuid
 import pyautogui
 import pyperclip
 from PIL import Image
-
+from pathlib import Path
 pyautogui.FAILSAFE = False
 
 
@@ -17,6 +17,7 @@ class ComputerTools:
     """Cross-platform wrapper for desktop GUI automation via pyautogui."""
 
     def __init__(self):
+           
         self.image_info = None
         self.template_matcher = None
 
@@ -25,7 +26,38 @@ class ComputerTools:
         width, height = Image.open(path).size
         self.image_info = (width, height)
 
-    def get_screenshot(self, image_path, retry_times=3):
+    def get_screenshot(self, image_path=None, retry_times=3):
+        """
+        Capture screenshot, save compressed JPEG, return image HTTP URL.
+        """
+
+        if os.path.exists(image_path):
+            os.remove(image_path)
+
+        os.makedirs(os.path.dirname(image_path), exist_ok=True)
+
+        for _ in range(retry_times):
+            screenshot = pyautogui.screenshot()
+
+            # 压缩，降低 VLM 视觉编码开销
+            img = screenshot.convert("RGB")
+            # img.thumbnail((self.max_size, self.max_size))
+
+            img.save(
+                image_path,
+                format="JPEG",
+                # quality=self.jpeg_quality,
+                optimize=True,
+            )
+
+            if os.path.exists(image_path):
+                self._load_image_info(str(image_path))
+                return True
+
+            time.sleep(0.1)
+        return False
+    
+    def get_screenshot_origin(self, image_path, retry_times=3):
         """
         Capture a desktop screenshot and save to *image_path*.
         Returns True on success, False after exhausting retries.

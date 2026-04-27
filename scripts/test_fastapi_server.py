@@ -69,12 +69,16 @@ def test_create_task(mdpath: str = "../test_md/test_ui9.md"):
     if read_markdown:
         task_name = read_markdown["extracted_title"]
         instruction = read_markdown["prompt_for_llm"]
-        
+    
+    # instruction = "F22-206飞机执行任务指派目标6869"
+    # task_name = "自动化测试示例1"    
     payload = {
         "task_name": task_name,
         "instruction": instruction,
         "max_steps": 30,
         "max_retries": 3,
+        "use_intent_mapping": False,
+        # "intent_mapping_config_path": "../config/intent_mapping.yaml",
     }
 
     try:
@@ -288,5 +292,14 @@ def main(mdpath: str = "../test_md/test_ui9.md"):
 
 
 if __name__ == "__main__":
-    mdpath = "../test_md/test_ui7.md"
+    mdpath = "../test_md/test_ui10.md"
     main(mdpath)
+
+
+
+# 206 执行fix确认
+
+# 1. 右键点击下方平台号为206*的杀伤链卡片
+# 2. 选择"下一环节"
+# 3. 在弹出的对话框中点击确认
+

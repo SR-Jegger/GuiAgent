@@ -471,6 +471,9 @@ async def run_agent_async(
     rules_dir: str = "./rules",
     stop_event: Optional[asyncio.Event] = None,
     compiled_agent=None,  # Pre-compiled agent for hot-start
+    progress_callback=None,
+    use_intent_mapping: bool = False,  # 是否启用意图映射
+    intent_mapping_config_path: Optional[str] = None,  # 映射配置路径
 ) -> dict:
     """
     Run the GUI automation agent asynchronously.
@@ -478,6 +481,8 @@ async def run_agent_async(
     Args:
         stop_event: Optional asyncio.Event to cancel the task
         compiled_agent: Optional pre-compiled agent graph (for hot-start)
+        use_intent_mapping: Whether to use intent mapping for task decomposition
+        intent_mapping_config_path: Custom path to intent mapping config file
 
     Returns:
         Final agent state
@@ -490,6 +495,7 @@ async def run_agent_async(
     print(f"Instruction: {instruction[:100]}{'...' if len(instruction) > 100 else ''}")
     print(f"Max Steps: {max_steps}")
     print(f"Max Retries per Step: {max_retries}")
+    print(f"Intent Mapping: {use_intent_mapping}")
     print("=" * 60)
 
     # Use pre-compiled agent if provided (hot-start), otherwise compile now
@@ -510,6 +516,8 @@ async def run_agent_async(
         "max_retries": max_retries,
         "add_info": add_info,
         "rules_dir": rules_dir,
+        "use_intent_mapping": use_intent_mapping,
+        "intent_mapping_config_path": intent_mapping_config_path or "data/intent_mappings.json",
         "step_id": 0,
         "screenshot_path": "",
         "messages": [],
@@ -523,12 +531,16 @@ async def run_agent_async(
         "continue_substep_flag": True,
         "history": [],
         "output_dir": get_output_dir(),
+        "screenshot_url": "http://192.168.137.1:8000/images",
         "stop_event": stop_event,  # Pass stop_event to state for node-level cancellation check
     }
     final_state = state
     config = {"recursion_limit": 500}
 
     try:
+        if progress_callback:
+            progress_callback(state, status="running", message="任务初始化完成")
+
         # Use async streaming to allow real-time cancellation checks
         # agent.astream() is async, so we can check stop_event between events
         async for event in agent.astream(state, config=config):
@@ -538,11 +550,15 @@ async def run_agent_async(
                 state["stop_flag"] = True
                 state["execution_status"] = "error"
                 state["error_message"] = "Task cancelled"
+                if progress_callback:
+                    progress_callback(state, status="cancelled", message="任务已取消")
                 break
 
             for node_name, node_output in event.items():
                 print(f"  [Node: {node_name}] completed")
                 state.update(node_output)
+                if progress_callback:
+                    progress_callback(state, status="running", message=f"{node_name} 已更新")
 
             # Also check after processing event
             if state.get("stop_flag"):
@@ -555,6 +571,8 @@ async def run_agent_async(
                 state["stop_flag"] = True
                 state["execution_status"] = "error"
                 state["error_message"] = "Task cancelled"
+                if progress_callback:
+                    progress_callback(state, status="cancelled", message="任务已取消")
                 break
 
         final_state = state
@@ -565,6 +583,8 @@ async def run_agent_async(
     except Exception as e:
         print(f"\n[AGENT] Graph execution error: {e}")
         final_state = state
+        if progress_callback:
+            progress_callback(state, status="failed", message=str(e))
 
     # Final summary
     print("\n" + "=" * 60)

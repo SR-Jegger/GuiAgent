@@ -1,0 +1,40 @@
+{
+  "version": "1.0",
+  "description": "业务意图到操作步骤的映射配置",
+  "mappings": [
+    {
+      "intent": "飞机任务指派",
+      "keywords": ["飞机", "任务", "指派"],
+      "match_groups": ["[A-Za-z]+\\d+-\\d+", "目标(.*)"],
+      "sub_steps": [
+        "双击打开Edge Dev浏览器图标",
+        "输入http://localhost:3000/，进入无人作战指挥系统页面",
+        "右键点击{{match_group_1}}号平台卡片",
+        "菜单中选择执行指派任务",
+        "任务名称一栏输入打击任务-C1",
+        "打击/侦察目标一栏输入{{match_group_2}}",
+        "点击确认并选择目标位置按钮",
+        "然后在地图上随机点击一个靠地图右侧的位置执行指派"
+      ],
+      "enabled": true
+    },
+    {
+      "intent": "关闭窗口",
+      "keywords": ["关闭", "窗口"],
+      "match_groups": [],
+      "sub_steps": [
+        "点击窗口右上角关闭按钮"
+      ],
+      "enabled": true
+    },
+    {
+      "intent": "打开浏览器",
+      "keywords": ["打开", "浏览器"],
+      "match_groups": [],
+      "sub_steps": [
+        "双击桌面浏览器图标"
+      ],
+      "enabled": false
+    }
+  ]
+}

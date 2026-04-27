@@ -54,7 +54,9 @@ def reasoning_node(state: AgentState) -> AgentState:
 
     step_id = state.get("step_id", 0)
     screenshot_path = state.get("screenshot_path", "")
-
+    screenshot_url = state.get("screenshot_url", "")
+    # Debug: print state keys to verify screenshot_url is present
+    
     # For multi-step tasks, use current sub-step description
     sub_steps = state.get("sub_steps", [])
     current_step_index = state.get("current_step_index", 0)
@@ -94,7 +96,7 @@ def reasoning_node(state: AgentState) -> AgentState:
     try:
         # Build messages with screenshot and history
         print(f"[REASONING] current_instruction: {current_instruction}")
-        messages = build_messages(screenshot_path, current_instruction, history, model)
+        messages = build_messages(screenshot_path, current_instruction, history, model, image_url=screenshot_url)
 
         # Add supplementary info if provided
         if state.get("add_info"):

@@ -21,3 +21,6 @@ __pycache__/
 # Records of conversations
 docs/
 .claude/
+
+*.png
+*.jpg

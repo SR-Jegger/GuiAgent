@@ -1,28 +1,35 @@
 """
-Application Service Layer for GUI Agent Task Management
+Application Service Layer for GUI Agent Task Management.
 
 This module provides high-level business logic for task management,
 decoupled from FastAPI routing concerns.
-
-Services:
-- AgentApplicationService: Task lifecycle management
 """
 
 import asyncio
-import os
-import uuid
-import time
 import json
-from typing import Optional, Dict, Any, List
-from enum import Enum
+import time
+import uuid
 from dataclasses import dataclass, field
-from pathlib import Path
+from enum import Enum
+from typing import Any, Dict, List, Optional
 
-from agent_graph import run_agent_async, build_agent_graph_simple
+from agent_graph import build_agent_graph_simple, run_agent_async
+from app.popup.task_progress import (
+    PROGRESS_STATUS_CANCELLED,
+    PROGRESS_STATUS_CANCELLING,
+    PROGRESS_STATUS_COMPLETED,
+    PROGRESS_STATUS_FAILED,
+    PROGRESS_STATUS_PENDING,
+    PROGRESS_STATUS_RUNNING,
+    TaskProgressSnapshot,
+    build_progress_snapshot,
+)
+from app.popup.task_progress_popup import TaskProgressPopup
 
 
 class TaskStatus(str, Enum):
-    """Task lifecycle status"""
+    """Task lifecycle status."""
+
     PENDING = "pending"
     RUNNING = "running"
     COMPLETED = "completed"
@@ -32,7 +39,8 @@ class TaskStatus(str, Enum):
 
 @dataclass
 class Task:
-    """Represents a single task with its lifecycle"""
+    """Represents a single task with its lifecycle."""
+
     task_id: str
     instruction: str
     task_name: str = "default_task"
@@ -40,6 +48,8 @@ class Task:
     max_retries: int = 3
     add_info: Optional[str] = None
     rules_dir: str = "./rules"
+    use_intent_mapping: bool = False  # 是否启用意图映射
+    intent_mapping_config_path: Optional[str] = None  # 映射配置路径
 
     status: TaskStatus = TaskStatus.PENDING
     created_at: float = field(default_factory=time.time)
@@ -49,17 +59,18 @@ class Task:
     result: Optional[Dict] = None
     error: Optional[str] = None
 
-    # Internal
     _stop_event: Optional[asyncio.Event] = field(default=None, repr=False)
     _task: Optional[asyncio.Task] = field(default=None, repr=False)
+    progress: Optional[TaskProgressSnapshot] = field(default=None, repr=False)
+    _progress_popup: Optional[TaskProgressPopup] = field(default=None, repr=False)
 
-    def cancel(self):
-        """Request task cancellation"""
+    def cancel(self) -> None:
+        """Request task cancellation."""
         if self._stop_event:
             self._stop_event.set()
 
     def to_dict(self) -> dict:
-        """Convert to dictionary for API response"""
+        """Convert to dictionary for API response."""
         return {
             "task_id": self.task_id,
             "status": self.status.value,
@@ -68,83 +79,58 @@ class Task:
             "completed_at": self.completed_at,
             "result": self.result,
             "error": self.error,
+            "progress": self.progress.__dict__ if self.progress else None,
         }
 
     @classmethod
     def create(cls, instruction: str, **kwargs) -> "Task":
-        """Factory method to create a new task with UUID"""
+        """Factory method to create a new task with UUID."""
         return cls(
             task_id=str(uuid.uuid4()),
             instruction=instruction,
             _stop_event=asyncio.Event(),
-            **kwargs
+            **kwargs,
         )
 
 
 class AgentApplicationService:
-    """
-    Application service for GUI agent task management.
-
-    Provides high-level business logic for:
-    - Task submission and lifecycle management
-    - Concurrent execution control
-    - Task cancellation
-    - Task status tracking
-
-    Usage:
-        service = AgentApplicationService()
-        await service.initialize()
-        task_id = await service.submit_task("Click the login button")
-        status = await service.get_task_status(task_id)
-    """
+    """Application service for GUI agent task management."""
 
     def __init__(self, max_concurrent: int = 1):
         self.max_concurrent = max_concurrent
         self._tasks: Dict[str, Task] = {}
         self._queue: asyncio.Queue = asyncio.Queue()
         self._workers: List[asyncio.Task] = []
-        self._running_count = 0
         self._lock = asyncio.Lock()
 
-        # Cached resources (hot-start)
         self._model_config: Optional[Dict] = None
         self._compiled_agent = None
 
-    async def initialize(self, config_path: str = "nodes/model_config.json"):
-        """
-        Initialize service: load config, compile agent graph.
-        Call this once at application startup.
-        """
-        # Load model configuration
+    async def initialize(self, config_path: str = "nodes/model_config.json") -> None:
+        """Initialize service: load config, compile agent graph, start workers."""
         await self._load_model_config(config_path)
-
-        # Compile agent graph for hot-start
         self._compile_agent()
-
-        # Start worker tasks
         await self._start_workers()
 
-    async def _load_model_config(self, config_path: str):
-        """Load model configuration from file"""
+    async def _load_model_config(self, config_path: str) -> None:
+        """Load model configuration from file."""
         loop = asyncio.get_event_loop()
-        self._model_config = await loop.run_in_executor(
-            None, self._load_config_sync, config_path
-        )
+        self._model_config = await loop.run_in_executor(None, self._load_config_sync, config_path)
         print(f"[AgentApplicationService] Loaded model config from {config_path}")
 
     def _load_config_sync(self, config_path: str) -> Dict:
-        """Synchronous config loading"""
-        with open(config_path, 'r') as f:
+        """Synchronous config loading."""
+        with open(config_path, "r", encoding="utf-8") as f:
             return json.load(f)
 
-    def _compile_agent(self):
-        """Compile agent graph once for hot-start"""
+    def _compile_agent(self) -> None:
+        """Compile agent graph once for hot-start."""
         builder = build_agent_graph_simple()
         self._compiled_agent = builder.compile()
         print("[AgentApplicationService] Agent graph compiled")
 
-    async def _start_workers(self):
-        """Start worker tasks to process queue"""
+    async def _start_workers(self) -> None:
+        """Start worker tasks to process queue."""
         for i in range(self.max_concurrent):
             worker = asyncio.create_task(self._worker(i))
             self._workers.append(worker)
@@ -158,21 +144,10 @@ class AgentApplicationService:
         max_retries: int = 3,
         add_info: Optional[str] = None,
         rules_dir: str = "./rules",
+        use_intent_mapping: bool = False,
+        intent_mapping_config_path: Optional[str] = None,
     ) -> str:
-        """
-        Submit a new task for async execution.
-
-        Args:
-            instruction: Task instruction text
-            task_name: Optional task name
-            max_steps: Maximum steps to execute
-            max_retries: Maximum retries per step
-            add_info: Additional context info
-            rules_dir: Path to rules directory
-
-        Returns:
-            task_id: Unique task identifier
-        """
+        """Submit a new task for async execution."""
         task = Task.create(
             instruction=instruction,
             task_name=task_name,
@@ -180,6 +155,13 @@ class AgentApplicationService:
             max_retries=max_retries,
             add_info=add_info,
             rules_dir=rules_dir,
+            use_intent_mapping=use_intent_mapping,
+            intent_mapping_config_path=intent_mapping_config_path,
+        )
+        task.progress = build_progress_snapshot(
+            task_id=task.task_id,
+            instruction=task.instruction,
+            status=PROGRESS_STATUS_PENDING,
         )
 
         async with self._lock:
@@ -190,65 +172,46 @@ class AgentApplicationService:
         return task.task_id
 
     async def get_task_status(self, task_id: str) -> Optional[Dict]:
-        """
-        Get current status of a task.
-
-        Args:
-            task_id: Task identifier
-
-        Returns:
-            Task status dict or None if not found
-        """
+        """Get current status of a task."""
         async with self._lock:
             task = self._tasks.get(task_id)
-
-        if not task:
-            return None
-
-        return task.to_dict()
+        return task.to_dict() if task else None
 
     async def get_task(self, task_id: str) -> Optional[Task]:
-        """Get task object by ID (internal use)"""
+        """Get task object by ID."""
         async with self._lock:
             return self._tasks.get(task_id)
 
     async def cancel_task(self, task_id: str) -> bool:
-        """
-        Cancel a running or pending task.
-
-        Args:
-            task_id: Task identifier
-
-        Returns:
-            True if cancelled, False if task not found or already terminal
-        """
+        """Cancel a running or pending task."""
         async with self._lock:
             task = self._tasks.get(task_id)
 
         if not task:
             return False
 
-        # Cannot cancel terminal tasks
         if task.status in (TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED):
             return False
 
         task.cancel()
+        self._update_task_progress(
+            task,
+            status=PROGRESS_STATUS_CANCELLING,
+            status_message="正在取消任务...",
+        )
         task.status = TaskStatus.CANCELLED
         task.completed_at = time.time()
+        self._update_task_progress(
+            task,
+            status=PROGRESS_STATUS_CANCELLED,
+            status_message="任务已取消",
+        )
 
         print(f"[AgentApplicationService] Cancelled task: {task.task_id}")
         return True
 
     async def list_tasks(self, status_filter: Optional[TaskStatus] = None) -> List[Dict]:
-        """
-        List all tasks, optionally filtered by status.
-
-        Args:
-            status_filter: Optional status to filter by
-
-        Returns:
-            List of task status dicts
-        """
+        """List all tasks, optionally filtered by status."""
         async with self._lock:
             tasks = list(self._tasks.values())
 
@@ -267,24 +230,7 @@ class AgentApplicationService:
         rules_dir: str = "./rules",
         timeout: Optional[float] = None,
     ) -> Dict:
-        """
-        Run a single task synchronously (blocking call).
-
-        For CLI usage or simple scripts. For API usage, use submit_task + get_task_status.
-
-        Args:
-            instruction: Task instruction text
-            task_name: Optional task name
-            max_steps: Maximum steps to execute
-            max_retries: Maximum retries per step
-            add_info: Additional context info
-            rules_dir: Path to rules directory
-            timeout: Optional timeout in seconds
-
-        Returns:
-            Final task state dict
-        """
-        # Create a temporary task
+        """Run a single task synchronously."""
         task_id = await self.submit_task(
             instruction=instruction,
             task_name=task_name,
@@ -294,7 +240,6 @@ class AgentApplicationService:
             rules_dir=rules_dir,
         )
 
-        # Wait for completion
         start_time = time.time()
         while True:
             task = await self.get_task(task_id)
@@ -304,46 +249,47 @@ class AgentApplicationService:
             if task.status in (TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED):
                 return task.to_dict()
 
-            # Check timeout
             if timeout and (time.time() - start_time) > timeout:
                 await self.cancel_task(task_id)
                 return {"error": "Timeout", "timeout": timeout}
 
-            # Poll interval
             await asyncio.sleep(0.5)
 
-    async def _worker(self, worker_id: int):
-        """Worker coroutine that processes tasks from queue"""
+    async def _worker(self, worker_id: int) -> None:
+        """Worker coroutine that processes tasks from queue."""
         print(f"[Worker-{worker_id}] Started")
 
         while True:
             try:
                 task: Task = await self._queue.get()
 
-                # Check if cancelled while pending
                 if task.status == TaskStatus.CANCELLED:
                     self._queue.task_done()
                     continue
 
-                # Execute task
                 await self._execute_task(worker_id, task)
                 self._queue.task_done()
 
             except asyncio.CancelledError:
                 print(f"[Worker-{worker_id}] Stopped")
                 break
-            except Exception as e:
-                print(f"[Worker-{worker_id}] Error: {e}")
+            except Exception as exc:
+                print(f"[Worker-{worker_id}] Error: {exc}")
 
-    async def _execute_task(self, worker_id: int, task: Task):
-        """Execute a single task"""
+    async def _execute_task(self, worker_id: int, task: Task) -> None:
+        """Execute a single task."""
         print(f"[Worker-{worker_id}] Executing task: {task.task_id}")
 
         task.status = TaskStatus.RUNNING
         task.started_at = time.time()
+        self._update_task_progress(
+            task,
+            status=PROGRESS_STATUS_RUNNING,
+            status_message="任务开始执行",
+        )
+        self._ensure_progress_popup(task)
 
         try:
-            # Run agent with pre-compiled graph
             final_state = await run_agent_async(
                 task_name=task.task_name,
                 instruction=task.instruction,
@@ -354,14 +300,33 @@ class AgentApplicationService:
                 rules_dir=task.rules_dir,
                 stop_event=task._stop_event,
                 compiled_agent=self._compiled_agent,
+                use_intent_mapping=task.use_intent_mapping,
+                intent_mapping_config_path=task.intent_mapping_config_path,
+                progress_callback=lambda state, status=None, message="": self._update_task_progress(
+                    task,
+                    agent_state=state,
+                    status=status,
+                    status_message=message,
+                ),
             )
 
-            # Determine final status
             if task._stop_event.is_set():
                 task.status = TaskStatus.CANCELLED
+                self._update_task_progress(
+                    task,
+                    agent_state=final_state,
+                    status=PROGRESS_STATUS_CANCELLED,
+                    status_message="任务已取消",
+                )
             elif final_state.get("execution_status") == "error":
                 task.status = TaskStatus.FAILED
                 task.error = final_state.get("error_message", "Unknown error")
+                self._update_task_progress(
+                    task,
+                    agent_state=final_state,
+                    status=PROGRESS_STATUS_FAILED,
+                    status_message=f"失败: {task.error}",
+                )
             else:
                 task.status = TaskStatus.COMPLETED
                 task.result = {
@@ -371,26 +336,78 @@ class AgentApplicationService:
                         "output_dir": final_state.get("output_dir", "N/A"),
                     }
                 }
+                self._update_task_progress(
+                    task,
+                    agent_state=final_state,
+                    status=PROGRESS_STATUS_COMPLETED,
+                    status_message="任务执行完成",
+                )
 
-        except Exception as e:
-            print(f"[Worker-{worker_id}] Task failed: {e}")
+        except Exception as exc:
+            print(f"[Worker-{worker_id}] Task failed: {exc}")
             task.status = TaskStatus.FAILED
-            task.error = str(e)
+            task.error = str(exc)
+            self._update_task_progress(
+                task,
+                status=PROGRESS_STATUS_FAILED,
+                status_message=f"失败: {task.error}",
+            )
 
         finally:
             task.completed_at = time.time()
             print(f"[Worker-{worker_id}] Task {task.task_id} finished: {task.status.value}")
 
-    async def shutdown(self):
-        """Shutdown service: cancel pending tasks and stop workers"""
-        # Cancel pending tasks
+    def _ensure_progress_popup(self, task: Task) -> None:
+        """Create the popup lazily when task execution starts."""
+        if task._progress_popup is not None or task.progress is None:
+            return
+
+        try:
+            popup = TaskProgressPopup(snapshot=task.progress)
+            popup.start()
+            task._progress_popup = popup
+        except Exception as exc:
+            print(f"[AgentApplicationService] Failed to create progress popup: {exc}")
+
+    def _update_task_progress(
+        self,
+        task: Task,
+        agent_state: Optional[dict] = None,
+        status: Optional[str] = None,
+        status_message: str = "",
+    ) -> None:
+        """Build the latest UI snapshot and push it to the popup."""
+        progress_status = status or self._map_task_status(task.status)
+        task.progress = build_progress_snapshot(
+            task_id=task.task_id,
+            instruction=task.instruction,
+            status=progress_status,
+            state=agent_state,
+            status_message=status_message,
+        )
+
+        if task._progress_popup is not None:
+            task._progress_popup.update(task.progress)
+
+    @staticmethod
+    def _map_task_status(task_status: TaskStatus) -> str:
+        mapping = {
+            TaskStatus.PENDING: PROGRESS_STATUS_PENDING,
+            TaskStatus.RUNNING: PROGRESS_STATUS_RUNNING,
+            TaskStatus.COMPLETED: PROGRESS_STATUS_COMPLETED,
+            TaskStatus.FAILED: PROGRESS_STATUS_FAILED,
+            TaskStatus.CANCELLED: PROGRESS_STATUS_CANCELLED,
+        }
+        return mapping[task_status]
+
+    async def shutdown(self) -> None:
+        """Shutdown service: cancel pending tasks and stop workers."""
         async with self._lock:
             for task in self._tasks.values():
                 if task.status == TaskStatus.PENDING:
                     task.status = TaskStatus.CANCELLED
                     task.cancel()
 
-        # Stop workers
         for worker in self._workers:
             worker.cancel()
 
@@ -398,20 +415,8 @@ class AgentApplicationService:
         print("[AgentApplicationService] All workers stopped")
 
 
-# Convenience function for CLI usage
-async def run_task_once(
-    instruction: str,
-    **kwargs
-) -> Dict:
-    """
-    Run a single task and wait for result.
-
-    Convenience wrapper for simple usage.
-
-    Example:
-        result = await run_task_once("Click the login button", max_steps=20)
-        print(result["status"])  # "completed" | "failed" | "cancelled"
-    """
+async def run_task_once(instruction: str, **kwargs) -> Dict:
+    """Convenience wrapper for simple usage."""
     service = AgentApplicationService()
     await service.initialize()
     try:

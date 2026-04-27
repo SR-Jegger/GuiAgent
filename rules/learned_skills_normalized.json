@@ -1,0 +1,273 @@
+{
+  "version": "1.0",
+  "description": "Learned skills - auto-generated from VLM operations",
+  "rules": [
+    {
+      "id": "learned_054ceff0",
+      "name": "Program Ma_双击",
+      "description": "Auto-learned skill from 3 operations",
+      "source": "learned",
+      "cluster_id": "cluster_3ce74492",
+      "created_at": "2026-04-02T14:01:49.878619",
+      "trigger": {
+        "patterns": [
+          "双击打开Edge Dev浏览器"
+        ],
+        "app_context": [
+          "Program Manager"
+        ]
+      },
+      "actions": [
+        {
+          "type": "double_click",
+          "coordinate": [
+            119,
+            694
+          ],
+          "coordinate_normalized": true
+        }
+      ],
+      "enabled": false,
+      "confidence": 0.65
+    },
+    {
+      "id": "learned_556f7fc5",
+      "name": "React App_点击",
+      "description": "Auto-learned skill from 6 operations",
+      "source": "learned",
+      "cluster_id": "cluster_2729e4fb",
+      "created_at": "2026-04-07T09:03:00.024075",
+      "trigger": {
+        "patterns": [
+          "点击\"确认并选择目标位置\"按钮"
+        ],
+        "app_context": [
+          "React App - 个人 - Microsoft​ Edge Dev"
+        ]
+      },
+      "actions": [
+        {
+          "type": "left_click",
+          "coordinate": [
+            741,
+            923
+          ],
+          "coordinate_normalized": true
+        },
+        {
+          "type": "wait",
+          "duration": 0.5
+        }
+      ],
+      "enabled": true,
+      "confidence": 0.8
+    },
+    {
+      "id": "learned_f8cc2cef",
+      "name": "React App_点击_输入",
+      "description": "Auto-learned sequence skill from 5 executions",
+      "source": "learned",
+      "cluster_id": "cluster_seq_d6d172c2",
+      "cluster_type": "sequence",
+      "created_at": "2026-04-07T16:18:25.279156",
+      "trigger": {
+        "patterns": [
+          "任务名称一栏输入 (.*)"
+        ],
+        "app_context": [
+          "React App - 个人 - Microsoft​ Edge Dev"
+        ]
+      },
+      "actions": [
+        {
+          "type": "left_click",
+          "coordinate": [
+            572,
+            527
+          ],
+          "coordinate_normalized": true
+        },
+        {
+          "type": "type",
+          "text": "{{match_group_1}}",
+          "param_name": "content"
+        }
+      ],
+      "parameters": [
+        {
+          "name": "content",
+          "type": "string",
+          "required": true,
+          "examples": [
+            "打击任务01",
+            "侦察任务02",
+            "测试任务B"
+          ]
+        }
+      ],
+      "enabled": false,
+      "confidence": 0.75
+    },
+    {
+      "id": "learned_644ff400",
+      "name": "React App_点击_输入",
+      "description": "Auto-learned sequence skill from 3 executions",
+      "source": "learned",
+      "cluster_id": "cluster_seq_8f82fe9f",
+      "cluster_type": "sequence",
+      "created_at": "2026-04-07T16:23:37.654946",
+      "trigger": {
+        "patterns": [
+          "打击/侦察目标一栏输入 (.*)基地"
+        ],
+        "app_context": [
+          "React App - 个人 - Microsoft​ Edge Dev"
+        ]
+      },
+      "actions": [
+        {
+          "type": "left_click",
+          "coordinate": [
+            559,
+            624
+          ],
+          "coordinate_normalized": true
+        },
+        {
+          "type": "type",
+          "text": "{{match_group_1}}",
+          "param_name": "content"
+        }
+      ],
+      "parameters": [
+        {
+          "name": "content",
+          "type": "string",
+          "required": true,
+          "examples": [
+            "沙特",
+            "汉堡王",
+            "麦当劳"
+          ]
+        }
+      ],
+      "enabled": false,
+      "confidence": 0.65
+    },
+    {
+      "id": "learned_eaa6fbbd",
+      "name": "新标签页_点击_输入_按键",
+      "description": "Auto-learned sequence skill from 3 executions",
+      "source": "learned",
+      "cluster_id": "cluster_seq_78012266",
+      "cluster_type": "sequence",
+      "created_at": "2026-04-07T17:07:52.993786",
+      "trigger": {
+        "patterns": [
+          "输入http://localhost:3000/，进入无人作战指挥系统页面"
+        ],
+        "app_context": [
+          "新标签页 - 个人 - Microsoft​ Edge Dev"
+        ]
+      },
+      "actions": [
+        {
+          "type": "left_click",
+          "coordinate": [
+            150,
+            63
+          ],
+          "coordinate_normalized": true
+        },
+        {
+          "type": "type",
+          "text": "http://localhost:3000/"
+        },
+        {
+          "type": "key",
+          "keys": [
+            "enter"
+          ]
+        }
+      ],
+      "enabled": true,
+      "confidence": 0.65
+    },
+    {
+      "id": "learned_81df95ee",
+      "name": "React App_点击_输入",
+      "description": "Auto-learned sequence skill from 5 executions",
+      "source": "learned",
+      "cluster_id": "cluster_seq_llm_d1b1d774",
+      "cluster_type": "sequence",
+      "created_at": "2026-04-08T16:26:09.724043",
+      "trigger": {
+        "patterns": [
+          "打击/侦察目标一栏输入(.*)"
+        ],
+        "app_context": [
+          "React App - 个人 - Microsoft​ Edge Dev"
+        ]
+      },
+      "actions": [
+        {
+          "type": "left_click",
+          "coordinate": [
+            558,
+            621
+          ],
+          "coordinate_normalized": true
+        },
+        {
+          "type": "type",
+          "text": "{{match_group_1}}",
+          "param_name": "content"
+        }
+      ],
+      "parameters": [
+        {
+          "name": "content",
+          "type": "string",
+          "required": true,
+          "examples": [
+            "洛杉矶市政府",
+            "巴厘岛北部",
+            "台北市政府"
+          ]
+        }
+      ],
+      "enabled": true,
+      "confidence": 0.75
+    },
+    {
+      "id": "learned_0fca8320",
+      "name": "新标签页_双击",
+      "description": "Auto-learned skill from 4 operations",
+      "source": "learned",
+      "cluster_id": "cluster_fa7c2a21",
+      "created_at": "2026-04-09T15:12:31.318968",
+      "trigger": {
+        "patterns": [
+          "双击打开Edge\\s*Dev浏览器"
+        ],
+        "app_context": [
+          "新标签页 - 个人 - Microsoft​ Edge Dev"
+        ]
+      },
+      "actions": [
+        {
+          "type": "double_click",
+          "coordinate": [
+            121,
+            694
+          ],
+          "coordinate_normalized": true
+        }
+      ],
+      "enabled": true,
+      "confidence": 0.7
+    }
+  ],
+  "coordinate_normalized": true,
+  "original_resolution": "1920x1080"
+}

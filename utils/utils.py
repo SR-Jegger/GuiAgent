@@ -164,43 +164,40 @@ def annotate_screenshot(image_path, action_parameter, save_path="screenshot_anno
 
 # ---------------------------------------------------------------------------
 # VLM message construction
-# 修改了 left_click 和 double_click, 并加入# Click Action Decision Rules
-# 以加强区分单击和双击
 # ---------------------------------------------------------------------------
 
 
 def encode_image_to_base64(image_path):
-    """将本地图片转换为 base64 编码"""
+    """Convert local image to base64 encoding."""
     with open(image_path, "rb") as image_file:
         return base64.b64encode(image_file.read()).decode('utf-8')
 
 
-def build_messages(image_path, instruction, history_output, model_name, history_n=4):
+def build_messages(image_path, instruction, history_output, model_name, history_n=4, image_url=None):
     """
     Construct the multi-turn message list for the VLM.
 
     Args:
-        image_path:      Path to the current screenshot.
+        image_path:      Path to the current screenshot (fallback if image_url not provided).
         instruction:     The user's task instruction.
-        history_output:  List of dicts with keys 'output' and 'image'.
+        history_output:  List of dicts with keys 'output', 'image', and optionally 'image_url'.
         model_name:      Model identifier (affects history summarization).
         history_n:       Number of recent history turns to include as images.
+        image_url:       HTTP URL for the current screenshot (preferred over base64).
 
     Returns:
-        A list of message dicts suitable for the DashScope API.
+        A list of message dicts suitable for the OpenAI API.
     """
     current_step = len(history_output)
-    # history_start_idx = max(0, current_step - history_n)
-    history_start_idx = max(0, current_step)
-    
+    history_start_idx = max(0, current_step - history_n)
+
     # Summarize early actions (before the image-history window)
     previous_actions = []
     for i in range(history_start_idx):
         if i < len(history_output):
             text = history_output[i]["output"]
-            if "Action:" in text and "<tool_call>" in text:
-                # 从文本中提取 Action: 和 <tool_call> 之间的内容
-                text = text.split("Action:")[1].split("<tool_call>")[0].strip()
+            if "Action:" in text and "ॽ" in text:
+                text = text.split("Action:")[1].split("ॽ")[0].strip()
             previous_actions.append(f"Step {i + 1}: {text}")
 
     previous_actions_str = "\n".join(previous_actions) if previous_actions else "None"
@@ -212,6 +209,22 @@ def build_messages(image_path, instruction, history_output, model_name, history_
         f"Previous actions Have finished:\n{previous_actions_str}"
     )
 
+    # Helper: get image content (URL or base64)
+    def get_image_content(item_image_path, item_image_url=None):
+        """Return image_url dict, preferring URL over base64."""
+        if item_image_url:
+            return {
+                "type": "image_url",
+                "image_url": {"url": item_image_url}
+            }
+        else:
+            print(f"[WARN] No image URL provided, using base64 encoding for {item_image_path}")
+            base64_image = encode_image_to_base64(item_image_path)
+            return {
+                "type": "image_url",
+                "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}
+            }
+
     # Assemble messages
     messages = [
         {
@@ -221,71 +234,49 @@ def build_messages(image_path, instruction, history_output, model_name, history_
     ]
 
     history_len = min(history_n, len(history_output))
-    
+
     if history_len > 0:
         for idx, item in enumerate(history_output[-history_n:]):
-            # 将历史图片转换为 base64
-            base64_image = encode_image_to_base64(item["image"])
-            
+            # Get history image content (prefer URL)
+            item_image_url = item.get("image_url")
+            item_image_path = item.get("image")
+            image_content = get_image_content(item_image_path, item_image_url)
+
             if idx == 0:
                 messages.append({
                     "role": "user",
                     "content": [
                         {"type": "text", "text": instruction_prompt},
-                        {
-                            "type": "image_url",
-                            "image_url": {
-                                "url": f"data:image/jpeg;base64,{base64_image}"
-                            }
-                        },
+                        image_content,
                     ],
                 })
             else:
                 messages.append({
                     "role": "user",
-                    "content": [
-                        {
-                            "type": "image_url",
-                            "image_url": {
-                                "url": f"data:image/jpeg;base64,{base64_image}"
-                            }
-                        }
-                    ],
+                    "content": [image_content],
                 })
             messages.append({
                 "role": "assistant",
                 "content": [{"type": "text", "text": item["output"]}],
             })
-        
-        # 当前图片也转换为 base64
-        base64_current = encode_image_to_base64(image_path)
+
+        # Current image (prefer image_url)
+        current_image_content = get_image_content(image_path, image_url)
         messages.append({
             "role": "user",
-            "content": [
-                {
-                    "type": "image_url",
-                    "image_url": {
-                        "url": f"data:image/jpeg;base64,{base64_current}"
-                    }
-                }
-            ],
+            "content": [current_image_content],
         })
     else:
-        base64_image = encode_image_to_base64(image_path)
-        # mime_type = get_image_mime_type(image_path)
+        # No history, send current image directly
+        current_image_content = get_image_content(image_path, image_url)
         messages.append({
             "role": "user",
             "content": [
                 {"type": "text", "text": instruction_prompt},
-                {
-                    "type": "image_url",
-                    "image_url": {
-                        "url": f"data:image/jpeg;base64,{base64_image}"
-                    }
-                },
+                current_image_content,
             ],
         })
-    
+
     return messages
 
 
@@ -295,12 +286,12 @@ def build_messages(image_path, instruction, history_output, model_name, history_
 
 def extract_tool_calls(text):
     """
-    Extract all JSON objects from <tool_call>...</tool_call> blocks.
+    Extract all JSON objects from alsex...alsex blocks.
 
     Returns a list of parsed dicts. Blocks that fail to parse are skipped
     with a warning.
     """
-    pattern = re.compile(r"<tool_call>(.*?)</tool_call>", re.DOTALL | re.IGNORECASE)
+    pattern = re.compile(r"alsex(.*?)alsex", re.DOTALL | re.IGNORECASE)
     blocks = pattern.findall(text)
 
     actions = []
@@ -330,7 +321,7 @@ def extract_template_request(text: str):
     except Exception as e:
         print(f"[TEMPLATE_MATCH] JSON parse error: {e}")
         return None
-    
+
 def extract_action(text: str):
     """
     Extract the action from the LLM response.
@@ -339,8 +330,9 @@ def extract_action(text: str):
     match = re.search(pattern, text)
     if match:
         result = match.group(0)
-        print(result)  # 输出: Action:xxxxx <tool>xxx</tool>
+        print(result)
     return result.strip() if match else None
+
 # ---------------------------------------------------------------------------
 # Output directory helper
 # ---------------------------------------------------------------------------
@@ -369,7 +361,7 @@ ERROR_CALLING_LLM = 'Error calling LLM'
 
 def pil_to_base64(image):
     buffer = BytesIO()
-    image.save(buffer, format="PNG") 
+    image.save(buffer, format="PNG")
     return base64.b64encode(buffer.getvalue()).decode("utf-8")
 
 def image_to_base64(image_path):
@@ -452,7 +444,7 @@ class GUIOwlWrapper(LlmWrapper, MultimodalLlmWrapper):
           converted_messages.append({'role': message['role'], 'content': new_content})
 
       return converted_messages
-    
+
     def predict(
             self,
             text_prompt: str,
@@ -462,7 +454,7 @@ class GUIOwlWrapper(LlmWrapper, MultimodalLlmWrapper):
     def predict_mm(
             self, messages = None
     ) -> tuple[str, Optional[bool], Any]:
-        
+
         payload = messages
         payload = self.convert_messages_format_to_openaiurl(payload)
 
@@ -485,26 +477,24 @@ def process_markdown_task(file_path):
         lines = f.readlines()
 
     if not lines:
-        raise ValueError("文件为空")
+        raise ValueError("File is empty")
 
-    # 1. 提取第一行作为标题
+    # 1. Extract first line as title
     first_line = lines[0].strip()
-    
-    # 清理标题：去除开头的 '#' 和空格，例如 "## 任务名称" -> "任务名称"
-    # 使用正则去除开头所有的 # 和紧随的空格
+
+    # Clean title: remove leading '#' and spaces
     task_title = re.sub(r'^#+\s*', '', first_line).strip()
-    
-    #  sanitization: 文件名不能包含非法字符 (如 / \ : * ? " < > |)
+
+    # Sanitize: filename cannot contain illegal characters
     safe_filename = re.sub(r'[\\/:*?"<>|]', '_', task_title)
 
-    # 2. 提取剩余内容作为任务指令
-    # 从索引 1 开始截取，并过滤掉可能存在的空行（可选）
+    # 2. Extract remaining content as task instruction
     task_content_lines = lines[1:]
-    
-    # 可选：如果第二行是空行，也去掉，让指令更紧凑
+
+    # Optional: remove leading empty line
     if task_content_lines and task_content_lines[0].strip() == "":
         task_content_lines = task_content_lines[1:]
-        
+
     task_prompt = "".join(task_content_lines)
 
     return {
@@ -519,30 +509,30 @@ def process_markdown_task(file_path):
 
 class TemplateMatcher:
     """
-    模板匹配器：在截图中查找预定义的 UI 元素模板
-    
-    使用方法:
+    Template matcher: find predefined UI element templates in screenshots
+
+    Usage:
         matcher = TemplateMatcher("./templates")
         coord = matcher.find("buttons/close.png", "screenshot.png")
         if coord:
-            print(f"找到元素，坐标：{coord}")
+            print(f"Found element at: {coord}")
     """
-    
+
     def __init__(self, template_dir="./templates", threshold=0.8):
         """
         Args:
-            template_dir: 模板库目录
-            threshold: 匹配置信度阈值 (0-1)，越高越严格
+            template_dir: Template library directory
+            threshold: Match confidence threshold (0-1), higher is stricter
         """
         self.template_dir = template_dir
         self.threshold = threshold
-        self.template_cache = {}  # 缓存已加载的模板
-    
+        self.template_cache = {}
+
     def _load_template(self, template_name):
-        """加载模板图（带缓存）"""
+        """Load template image (with cache)"""
         if template_name in self.template_cache:
             return self.template_cache[template_name]
-        
+
         template_path = os.path.join(self.template_dir, template_name)
         if not os.path.exists(template_path):
             print(f"[WARN] Template file does not exist: {template_path}")
@@ -552,67 +542,67 @@ class TemplateMatcher:
         if template is not None:
             self.template_cache[template_name] = template
         return template
-    
+
     def find(self, template_name, screenshot_path, multiple=False):
         """
-        在截图中查找匹配的模板
-        
+        Find matching template in screenshot
+
         Args:
-            template_name: 模板文件名（相对于 template_dir）
-            screenshot_path: 截图路径
-            multiple: 是否返回所有匹配结果（默认只返回最匹配的一个）
-        
+            template_name: Template file name (relative to template_dir)
+            screenshot_path: Screenshot path
+            multiple: Return all matches (default: only best match)
+
         Returns:
-            单个坐标 (x, y) 或 坐标列表 [(x, y), ...]，未找到返回 None
+            Single coordinate (x, y) or list [(x, y), ...], None if not found
         """
         if not CV2_AVAILABLE:
             print("[ERROR] OpenCV not available")
             return None
-        
+
         template = self._load_template(template_name)
         if template is None:
             print(f"[WARN] Template not found: {template_name}")
             return None
-        screenshot_path = screenshot_path.encode('gbk') 
+        screenshot_path = screenshot_path.encode('gbk')
         screenshot = cv2.imread(screenshot_path)
         if screenshot is None:
             print(f"[ERROR] Cannot load screenshot: {screenshot_path}")
             return None
-        
-        # 模板匹配
+
+        # Template matching
         result = cv2.matchTemplate(screenshot, template, cv2.TM_CCOEFF_NORMED)
         min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
-        
+
         if max_val < self.threshold:
             return None
-        
+
         h, w = template.shape[:2]
         center_x = max_loc[0] + w // 2
         center_y = max_loc[1] + h // 2
-        
+
         if multiple:
-            # 查找所有匹配点
+            # Find all matching points
             locations = np.where(result >= self.threshold)
             points = list(zip(*locations[::-1]))
-            # 去重（合并邻近点）
+            # Deduplicate (merge nearby points)
             unique_points = self._deduplicate_points(points, min_distance=w//2)
             return [(p[0] + w//2, p[1] + h//2) for p in unique_points]
         else:
             return (center_x, center_y)
-    
+
     def find_all(self, screenshot_path):
         """
-        在截图中查找所有已注册的模板
-        
+        Find all registered templates in screenshot
+
         Args:
-            screenshot_path: 截图路径
-        
+            screenshot_path: Screenshot path
+
         Returns:
-            dict: {模板名：坐标}，只包含找到的
+            dict: {template_name: coordinate}, only found ones
         """
         results = {}
-        
-        # 扫描模板目录
+
+        # Scan template directory
         for root, dirs, files in os.walk(self.template_dir):
             for file in files:
                 if file.endswith('.png'):
@@ -621,14 +611,14 @@ class TemplateMatcher:
                     coord = self.find(rel_path, screenshot_path)
                     if coord:
                         results[rel_path] = coord
-        
+
         return results
-    
+
     def _deduplicate_points(self, points, min_distance=10):
-        """去重：合并距离过近的点"""
+        """Deduplicate: merge points too close together"""
         if not points:
             return []
-        
+
         unique = []
         for point in points:
             is_duplicate = False
@@ -639,43 +629,43 @@ class TemplateMatcher:
                     break
             if not is_duplicate:
                 unique.append(point)
-        
+
         return unique
-    
+
     def register_template(self, name, screenshot_path, x, y, w, h):
         """
-        从截图中裁剪并注册新模板
-        
+        Crop and register new template from screenshot
+
         Args:
-            name: 模板文件名（如 "buttons/close.png"）
-            screenshot_path: 源截图路径
-            x, y: 裁剪区域左上角坐标
-            w, h: 裁剪区域宽高
+            name: Template file name (e.g. "buttons/close.png")
+            screenshot_path: Source screenshot path
+            x, y: Crop region top-left coordinate
+            w, h: Crop region width and height
         """
         if not CV2_AVAILABLE:
             return False
-        screenshot_path = screenshot_path.encode('gbk') 
+        screenshot_path = screenshot_path.encode('gbk')
         screenshot = cv2.imread(screenshot_path)
         if screenshot is None:
             return False
-        
+
         template = screenshot[y:y+h, x:x+w]
         output_path = os.path.join(self.template_dir, name)
-        
-        # 确保目录存在
+
+        # Ensure directory exists
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
-        
+
         cv2.imwrite(output_path, template)
-        
-        # 清除缓存（下次重新加载）
+
+        # Clear cache (reload next time)
         if name in self.template_cache:
             del self.template_cache[name]
-        
+
         print(f"[INFO] Template registered: {name}")
         return True
-    
+
     def list_templates(self):
-        """列出所有可用模板"""
+        """List all available templates"""
         templates = []
         for root, dirs, files in os.walk(self.template_dir):
             for file in files:

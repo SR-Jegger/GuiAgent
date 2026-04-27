@@ -1,0 +1,6 @@
+name: sam2
+channels:
+  - defaults
+dependencies:
+  - python=3.10
+prefix: E:\Anaconda\envs\sam2

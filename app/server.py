@@ -41,6 +41,8 @@ class TaskRequest(BaseModel):
     max_retries: int = 3
     add_info: Optional[str] = None
     rules_dir: str = "./rules"
+    use_intent_mapping: bool = False  # 是否启用意图映射模式
+    intent_mapping_config_path: Optional[str] = None  # 自定义映射配置路径
 
 
 class TaskResponse(BaseModel):
@@ -149,6 +151,20 @@ def create_app() -> FastAPI:
     if os.path.exists(static_dir):
         app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
+    # Mount images directory for screenshot URL access
+    # Screenshots are saved to Desktop/anno or ./anno, serve via HTTP
+    import platform
+    home = os.path.expanduser("~")
+    if platform.system() == "Windows":
+        default_output_dir = os.path.join(home, "Desktop", "anno")
+    else:
+        default_output_dir = os.path.join(home, "anno")
+
+    # Create directory if not exists
+    os.makedirs(default_output_dir, exist_ok=True)
+    app.mount("/images", StaticFiles(directory=default_output_dir), name="images")
+    print(f"[Server] Images served from: {default_output_dir}")
+
     # ========================================================================
     # Task API Endpoints (AgentApplicationService)
     # ========================================================================
@@ -167,6 +183,8 @@ def create_app() -> FastAPI:
             max_retries=request.max_retries,
             add_info=request.add_info,
             rules_dir=request.rules_dir,
+            use_intent_mapping=request.use_intent_mapping,
+            intent_mapping_config_path=request.intent_mapping_config_path,
         )
 
         status = await agent_service.get_task_status(task_id)

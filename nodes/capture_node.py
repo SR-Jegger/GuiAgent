@@ -47,6 +47,11 @@ def capture_node(state: AgentState) -> AgentState:
     step_id = state.get("step_id", 0)
     max_steps = state.get("max_steps", 50)
     output_dir = state.get("output_dir", get_output_dir())
+    
+    image_base_url = state.get(
+        "image_base_url",
+        "http://192.168.137.1:8000/images"
+    ).rstrip("/")
 
     # 1. Increment step counter
     step_id = step_id + 1
@@ -67,8 +72,10 @@ def capture_node(state: AgentState) -> AgentState:
         }
 
     # Generate screenshot path
-    screenshot_path = os.path.join(output_dir, f"{task_name}_{step_id}.png")
-
+    filename = f"{task_name}_{step_id}.jpg"
+    screenshot_path = os.path.join(output_dir, filename)
+    screenshot_url = f"{image_base_url}/{filename}"
+    print(f"\n[CAPTURE] {screenshot_url}...")
     # Initialize tools if not in state
     if "tools" not in state:
         tools = ComputerTools()
@@ -86,18 +93,20 @@ def capture_node(state: AgentState) -> AgentState:
         return {
             "step_id": step_id,
             "screenshot_path": "",
+            "screenshot_url": "",
             "execution_status": "error",
             "error_message": f"Failed to capture screenshot at step {step_id}",
             "retry_count": state.get("retry_count", 0) + 1,
         }
 
     print(f"[CAPTURE] Screenshot saved to: {screenshot_path}")
-
+    print(f"[CAPTURE] Screenshot URL: {screenshot_url}")
     return {
         "step_id": step_id,
         "screenshot_path": screenshot_path,
+        "screenshot_url": screenshot_url,
         "execution_status": "success",
         "error_message": None,
         "retry_count": 0,
-        "tools": tools,  # Pass tools to next nodes
+        "tools": tools,
     }

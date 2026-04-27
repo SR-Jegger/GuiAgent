@@ -169,6 +169,9 @@ def fast_path_node(state: AgentState) -> AgentState:
                 vlm_action["arguments"]["pixels"] = action["pixels"]
             elif action_type in ("click", "left_click", "right_click", "middle_click", "double_click") and "coordinate" in action:
                 vlm_action["arguments"]["coordinate"] = action["coordinate"]
+                # Copy coordinate_normalized flag for rescaling in execution_node
+                if "coordinate_normalized" in action:
+                    vlm_action["arguments"]["coordinate_normalized"] = action["coordinate_normalized"]
             elif action_type == "type" and "text" in action:
                 vlm_action["arguments"]["text"] = action["text"]
             elif action_type in ("key",) and "keys" in action:

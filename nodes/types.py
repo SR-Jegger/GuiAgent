@@ -77,7 +77,6 @@ class AgentState(TypedDict, total=False):
     # Runtime state
     task_name: str
     step_id: int
-    screenshot_path: str
     messages: list[dict]
     llm_response: str
     actions: list[dict]
@@ -96,6 +95,9 @@ class AgentState(TypedDict, total=False):
 
     # Output paths
     output_dir: str
+    screenshot_path: str
+    image_base_url: str
+    screenshot_url: str
 
     # Tools instance
     tools: Optional[Any]
@@ -104,6 +106,10 @@ class AgentState(TypedDict, total=False):
     sub_steps: list[dict]  # List of sub-step dicts: [{"step_id": 1, "description": "...", "status": "pending"}, ...]
     current_step_index: int  # Index of current sub-step being executed
     continue_substep_flag: bool  # Whether continue the current sub_step task  or next  sub_step
+
+    # Intent mapping configuration
+    use_intent_mapping: bool  # Whether to use intent mapping for task decomposition
+    intent_mapping_config_path: Optional[str]  # Path to intent mapping config file
 
     # Cancellation support (asyncio.Event is not serializable but works for runtime)
     stop_event: Optional[Any]  # asyncio.Event for task cancellation

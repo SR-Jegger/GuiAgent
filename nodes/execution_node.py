@@ -5,11 +5,22 @@ Responsible for parsing and executing actions from LLM response.
 """
 
 import json
+import logging
 import os
 import time
 from typing import TYPE_CHECKING
 
 from PIL import Image
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('data/logs/execution.log', encoding='utf-8'),  # File output
+    ]
+)
+
 
 from nodes.types import AgentState
 from utils.computer_tools import ComputerTools
@@ -149,6 +160,8 @@ def execution_node(state: AgentState) -> AgentState:
             print(f"  [EXECUTION] Parameters: {action_parameter}")
             should_stop = execute_action(tools, action_parameter)
             print(f"  [EXECUTION] Action {action_id + 1} executed successfully")
+            logger = logging.getLogger(__name__)
+            logger.info(f"Action {action_id + 1} executed successfully")
             if should_stop:
                 stop_flag = True
                 print("[EXECUTION] Stop signal received")
@@ -185,10 +198,12 @@ def execution_node(state: AgentState) -> AgentState:
 
     # Update history (skip for Fast Path)
     if not fast_path_matched:
+        screenshot_url = state.get("screenshot_url", "")
         history_entry = {
             "step": step_id,
             "output": llm_response,
             "image": screenshot_path,
+            "image_url": screenshot_url,  # Add URL for VLM history
             "actions": executed_actions,
         }
         history.append(history_entry)

@@ -22,4 +22,5 @@ __all__ = [
     "fast_path_node",
     "template_match_node",
     "task_decomposer_node",
+    "test_modle",
 ]
