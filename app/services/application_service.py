@@ -25,6 +25,8 @@ from app.popup.task_progress import (
     build_progress_snapshot,
 )
 from app.popup.task_progress_popup import TaskProgressPopup
+from app.popup.main_entry_card import MainEntryCard, CardState
+from app.semantic.semantic_matcher import SemanticMatcher, RuleBasedMatcher, MatchResult
 
 
 class TaskStatus(str, Enum):
@@ -96,8 +98,10 @@ class Task:
 class AgentApplicationService:
     """Application service for GUI agent task management."""
 
-    def __init__(self, max_concurrent: int = 1):
+    def __init__(self, max_concurrent: int = 1, show_entry_card: bool = True, use_semantic_match: bool = True):
         self.max_concurrent = max_concurrent
+        self.show_entry_card = show_entry_card  # 是否显示主入口卡片
+        self.use_semantic_match = use_semantic_match  # 是否启用语义匹配
         self._tasks: Dict[str, Task] = {}
         self._queue: asyncio.Queue = asyncio.Queue()
         self._workers: List[asyncio.Task] = []
@@ -106,11 +110,45 @@ class AgentApplicationService:
         self._model_config: Optional[Dict] = None
         self._compiled_agent = None
 
+        # 主入口卡片
+        self._main_entry_card: Optional[MainEntryCard] = None
+        self._current_task_id: Optional[str] = None  # 当前任务ID（单任务模式）
+
+        # 事件循环引用（用于跨线程调用）
+        self._loop: Optional[asyncio.AbstractEventLoop] = None
+
+        # 语义匹配器（可选：规则匹配或LLM匹配）
+        self._semantic_matcher: Optional[SemanticMatcher | RuleBasedMatcher] = None
+        self._use_llm_matcher: bool = True  # True: LLM匹配, False: 规则匹配
+
+        # 当前语义匹配结果（用于传递给 agent）
+        self._current_semantic_result: Optional[MatchResult] = None
+
     async def initialize(self, config_path: str = "nodes/model_config.json") -> None:
         """Initialize service: load config, compile agent graph, start workers."""
+        # 保存事件循环引用
+        self._loop = asyncio.get_running_loop()
+
         await self._load_model_config(config_path)
         self._compile_agent()
         await self._start_workers()
+
+        # 初始化语义匹配器
+        if self.use_semantic_match:
+            if self._use_llm_matcher:
+                # 使用 LLM 匹配（需要 model_config）
+                model_name = "gemma4_e4b"  # 可以改为配置项
+                model_cfg = self._model_config.get("models", {}).get(model_name, {})
+                self._semantic_matcher = SemanticMatcher(model_config=model_cfg)
+                print(f"[AgentApplicationService] Semantic matcher initialized (LLM: {model_name})")
+            else:
+                # 使用规则匹配（快速、无LLM调用）
+                self._semantic_matcher = RuleBasedMatcher()
+                print("[AgentApplicationService] Semantic matcher initialized (Rule-based!)")
+
+        # 启动主入口卡片
+        if self.show_entry_card:
+            self._start_main_entry_card()
 
     async def _load_model_config(self, config_path: str) -> None:
         """Load model configuration from file."""
@@ -135,6 +173,79 @@ class AgentApplicationService:
             worker = asyncio.create_task(self._worker(i))
             self._workers.append(worker)
         print(f"[AgentApplicationService] Started {self.max_concurrent} worker(s)")
+
+    def _start_main_entry_card(self) -> None:
+        """启动主入口卡片"""
+        try:
+            # 从配置获取 ASR 服务地址
+            asr_config = self._model_config.get("asr_server", {})
+            asr_server_url = asr_config.get("server_url", "ws://192.168.137.2:8585/asr/stream")
+
+            self._main_entry_card = MainEntryCard(
+                on_submit=self._on_card_submit,
+                on_cancel=self._on_card_cancel,
+                asr_server_url=asr_server_url,
+            )
+            self._main_entry_card.start()
+            print("[AgentApplicationService] Main entry card started")
+        except Exception as exc:
+            print(f"[AgentApplicationService] Failed to start main entry card: {exc}")
+
+    def _on_card_submit(self, instruction: str) -> None:
+        """卡片提交任务回调（从 Qt 线程调用）"""
+        if self._loop is None:
+            print("[AgentApplicationService] Event loop not ready")
+            return
+        # 跨线程调度异步任务
+        asyncio.run_coroutine_threadsafe(
+            self._submit_from_card(instruction),
+            self._loop
+        )
+
+    async def _submit_from_card(self, instruction: str) -> str:
+        """从卡片提交任务"""
+        if self._current_task_id:
+            # 单任务模式：检查是否有正在执行的任务
+            task = await self.get_task(self._current_task_id)
+            if task and task.status == TaskStatus.RUNNING:
+                print("[AgentApplicationService] 已有任务在执行，忽略新提交")
+                return ""
+
+        # 语义匹配处理
+        if self._semantic_matcher:
+            # LLM 匹配器是异步的，规则匹配器是同步的
+            if isinstance(self._semantic_matcher, SemanticMatcher):
+                match_result = await self._semantic_matcher.match(instruction)
+            else:
+                match_result = self._semantic_matcher.match(instruction)
+            if match_result.is_matched:
+                print(
+                    f"[语义匹配] 原文本: '{instruction}' → "
+                    f"匹配ID: {match_result.matched_id}, "
+                    f"置信度: {match_result.confidence:.2f}, "
+                    f"参数: {match_result.parameters}, "
+                    f"指令: '{match_result.instruction}'"
+                )
+                instruction = match_result.instruction
+                # 保存语义匹配结果，用于传递给 agent
+                self._current_semantic_result = match_result
+            else:
+                print(f"[语义匹配] 无匹配，使用原文本: '{instruction}'")
+                self._current_semantic_result = None
+
+        task_id = await self.submit_task(instruction=instruction)
+        self._current_task_id = task_id
+        return task_id
+
+    def _on_card_cancel(self) -> None:
+        """卡片取消任务回调（从 Qt 线程调用）"""
+        if self._loop is None or not self._current_task_id:
+            return
+        # 跨线程调度取消任务
+        asyncio.run_coroutine_threadsafe(
+            self.cancel_task(self._current_task_id),
+            self._loop
+        )
 
     async def submit_task(
         self,
@@ -287,9 +398,16 @@ class AgentApplicationService:
             status=PROGRESS_STATUS_RUNNING,
             status_message="任务开始执行",
         )
-        self._ensure_progress_popup(task)
+        # 不再创建独立弹窗，使用主入口卡片
 
         try:
+            # 获取语义匹配结果
+            semantic_matched_id = None
+            semantic_parameters = None
+            if self._current_semantic_result:
+                semantic_matched_id = self._current_semantic_result.matched_id
+                semantic_parameters = self._current_semantic_result.parameters
+
             final_state = await run_agent_async(
                 task_name=task.task_name,
                 instruction=task.instruction,
@@ -302,6 +420,8 @@ class AgentApplicationService:
                 compiled_agent=self._compiled_agent,
                 use_intent_mapping=task.use_intent_mapping,
                 intent_mapping_config_path=task.intent_mapping_config_path,
+                semantic_matched_id=semantic_matched_id,  # 语义匹配 ID
+                semantic_parameters=semantic_parameters,  # 语义匹配参数
                 progress_callback=lambda state, status=None, message="": self._update_task_progress(
                     task,
                     agent_state=state,
@@ -357,8 +477,14 @@ class AgentApplicationService:
             task.completed_at = time.time()
             print(f"[Worker-{worker_id}] Task {task.task_id} finished: {task.status.value}")
 
+    # 临时禁用弹窗的开关
+    POPUP_ENABLED = True  # 改为 True 可重新启用
+
     def _ensure_progress_popup(self, task: Task) -> None:
         """Create the popup lazily when task execution starts."""
+        if not self.POPUP_ENABLED:
+            return  # 弹窗已禁用，跳过
+
         if task._progress_popup is not None or task.progress is None:
             return
 
@@ -376,7 +502,7 @@ class AgentApplicationService:
         status: Optional[str] = None,
         status_message: str = "",
     ) -> None:
-        """Build the latest UI snapshot and push it to the popup."""
+        """Build the latest UI snapshot and push it to the popup or main entry card."""
         progress_status = status or self._map_task_status(task.status)
         task.progress = build_progress_snapshot(
             task_id=task.task_id,
@@ -386,6 +512,18 @@ class AgentApplicationService:
             status_message=status_message,
         )
 
+        # 更新主入口卡片
+        if self._main_entry_card is not None:
+            self._main_entry_card.update_progress(task.progress)
+            # 更新卡片状态
+            if progress_status == PROGRESS_STATUS_COMPLETED:
+                self._main_entry_card.set_state(CardState.COMPLETED)
+            elif progress_status == PROGRESS_STATUS_FAILED:
+                self._main_entry_card.set_state(CardState.FAILED)
+            elif progress_status == PROGRESS_STATUS_CANCELLED:
+                self._main_entry_card.set_state(CardState.CANCELLED)
+
+        # 也更新独立弹窗（如果存在）
         if task._progress_popup is not None:
             task._progress_popup.update(task.progress)
 
@@ -402,6 +540,11 @@ class AgentApplicationService:
 
     async def shutdown(self) -> None:
         """Shutdown service: cancel pending tasks and stop workers."""
+        # 关闭主入口卡片
+        if self._main_entry_card is not None:
+            self._main_entry_card.close()
+            print("[AgentApplicationService] Main entry card closed")
+
         async with self._lock:
             for task in self._tasks.values():
                 if task.status == TaskStatus.PENDING:

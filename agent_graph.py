@@ -369,6 +369,7 @@ def build_agent_graph_simple() -> StateGraph:
         if state.get("stop_flag"):
             return "END"
         if not state.get("continue_substep_flag") and state.get("execution_status") == "success":
+            time.sleep(1)  # 模拟执行后的小等待，实际可以根据需要调整或去掉
             return "continue_next"
         if state.get("continue_substep_flag") and state.get("execution_status") == "success":
             return "continue_current"
@@ -474,6 +475,8 @@ async def run_agent_async(
     progress_callback=None,
     use_intent_mapping: bool = False,  # 是否启用意图映射
     intent_mapping_config_path: Optional[str] = None,  # 映射配置路径
+    semantic_matched_id: Optional[str] = None,  # 语义匹配的 ID
+    semantic_parameters: Optional[dict] = None,  # 语义匹配提取的参数
 ) -> dict:
     """
     Run the GUI automation agent asynchronously.
@@ -483,6 +486,8 @@ async def run_agent_async(
         compiled_agent: Optional pre-compiled agent graph (for hot-start)
         use_intent_mapping: Whether to use intent mapping for task decomposition
         intent_mapping_config_path: Custom path to intent mapping config file
+        semantic_matched_id: matched_id from semantic matcher (关联意图映射)
+        semantic_parameters: extracted parameters from semantic matcher
 
     Returns:
         Final agent state
@@ -496,6 +501,7 @@ async def run_agent_async(
     print(f"Max Steps: {max_steps}")
     print(f"Max Retries per Step: {max_retries}")
     print(f"Intent Mapping: {use_intent_mapping}")
+    print(f"Semantic Matched ID: {semantic_matched_id}")
     print("=" * 60)
 
     # Use pre-compiled agent if provided (hot-start), otherwise compile now
@@ -518,6 +524,8 @@ async def run_agent_async(
         "rules_dir": rules_dir,
         "use_intent_mapping": use_intent_mapping,
         "intent_mapping_config_path": intent_mapping_config_path or "data/intent_mappings.json",
+        "semantic_matched_id": semantic_matched_id,  # 语义匹配结果
+        "semantic_parameters": semantic_parameters or {},  # 语义匹配参数
         "step_id": 0,
         "screenshot_path": "",
         "messages": [],
@@ -528,7 +536,7 @@ async def run_agent_async(
         "error_message": None,
         "retry_count": 0,
         "stop_flag": False,
-        "continue_substep_flag": True,
+        "continue_substep_flag": False, #True,
         "history": [],
         "output_dir": get_output_dir(),
         "screenshot_url": "http://192.168.137.1:8000/images",

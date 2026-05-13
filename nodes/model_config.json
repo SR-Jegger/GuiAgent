@@ -20,6 +20,17 @@
       "model": "/mnt/data1/automl/Bigdata/model/qwen3_8b",
       "base_url": "http://192.168.137.2:4050/v1",
       "api_key": "EMPTY"
+    },
+    "gemma4_e4b": {
+      "model": "/mnt/data1/automl/Bigdata/model/gemma-4-E4B-it",
+      "base_url": "http://192.168.137.2:4050/v1",
+      "api_key": "EMPTY"
     }
+  },
+  "asr_server": {
+    "server_url": "ws://192.168.137.2:8585/asr/stream",
+    "whisper_url": "http://192.168.137.2:8686/transcribe",
+    "host": "192.168.137.2",
+    "port": 4040
   }
 }

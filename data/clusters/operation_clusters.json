@@ -3,76 +3,27 @@
   "description": "Operation clusters - auto-generated from VLM operations",
   "clusters": [
     {
-      "cluster_id": "cluster_7db4c120",
-      "pattern": {
-        "instruction_pattern": "然后在地图上随机点击一个靠地图右侧的位置执行指派",
-        "app_context": "React App - 个人 - Microsoft​ Edge Dev",
-        "action_structure": [
-          "left_click"
-        ]
-      },
-      "members": [
-        "2584b648-df1b-47ab-9de2-936c480acad4",
-        "91e547f3-b493-485f-9dd5-fd73a6cae71b",
-        "6bd6ab98-89b3-458d-b199-5b160f1882ef",
-        "a7b9c6d5-e4f3-4a2b-8c1d-9e0f1a2b3c4d"
-      ],
-      "sample_instructions": [
-        "然后在地图上随机点击一个靠地图右侧的位置执行指派",
-        "然后在地图上随机点击一个靠地图右侧的位置执行指派",
-        "然后在地图上随机点击一个靠地图右侧的位置执行指派",
-        "然后在地图上随机点击一个靠地图右侧的位置执行指派"
-      ],
-      "sample_actions": [
-        {
-          "action": "left_click",
-          "coordinate": [
-            1935,
-            563
-          ]
-        },
-        {
-          "action": "left_click",
-          "coordinate": [
-            2135,
-            495
-          ]
-        },
-        {
-          "action": "left_click",
-          "coordinate": [
-            1873,
-            590
-          ]
-        },
-        {
-          "action": "left_click",
-          "coordinate": [
-            1920,
-            512
-          ]
-        }
-      ],
-      "count": 4,
-      "status": "candidate",
-      "created_at": "2026-04-13T17:10:17.799886",
-      "updated_at": "2026-04-13T17:10:17.799886"
-    },
-    {
-      "cluster_id": "cluster_a92a27bb",
+      "cluster_id": "cluster_2b0ec52e",
       "pattern": {
         "instruction_pattern": "双击打开Edge Dev浏览器",
-        "app_context": "新标签页 - 个人 - Microsoft​ Edge Dev",
+        "app_context": "无标题 - 个人 - Microsoft​ Edge Dev",
         "action_structure": [
           "double_click"
         ]
       },
       "members": [
-        "687c7cf1-fdfe-4cfe-a71f-6fc2c66a1f38",
-        "6e16fc3b-6b0a-40f7-a54f-98273494f7f4",
-        "6e16fc3b-6b0a-40f7-a54f-98273494f7f4",
-        "2bccd52d-c3b0-4afd-bb2d-9b85d97a2c53",
-        "2c8be0ac-caa4-4d21-80b5-44be8143967a"
+        "3bb8907c-10e3-48cd-b523-f6b35b5025dd",
+        "2e447ff9-6f19-4900-a31c-7f4aabc245df",
+        "6c83456c-5f0e-4748-811a-4d0736e20d04",
+        "6a896b2c-a904-43a2-bc14-92c33cf7d4ed",
+        "b9a29a56-19e5-4ff7-8b53-fd5293f35eb4",
+        "e3f3a02a-f7d9-427c-b91f-44cd819a2f13",
+        "37dc5bff-07ef-4267-9d52-98ef8110f48a",
+        "68f7aafa-6538-4128-8470-5fc8dbb4d4ba",
+        "25c4cb97-23a3-4281-b4fd-40cc81a67f94",
+        "61126298-856b-4a05-9d8f-50009fdd20c8",
+        "7be7aa20-fdbb-4d70-8ad8-52cb20a9131b",
+        "def23133-a8a1-4501-8969-d2611a4ec3d4"
       ],
       "sample_instructions": [
         "双击打开Edge Dev浏览器",
@@ -85,46 +36,347 @@
         {
           "action": "double_click",
           "coordinate": [
-            230,
-            750
+            89,
+            521
           ]
         },
         {
           "action": "double_click",
           "coordinate": [
-            238,
-            750
+            89,
+            521
           ]
         },
         {
           "action": "double_click",
           "coordinate": [
-            238,
-            750
+            89,
+            521
           ]
         },
         {
           "action": "double_click",
           "coordinate": [
-            230,
-            751
+            89,
+            521
           ]
         },
         {
           "action": "double_click",
           "coordinate": [
-            230,
-            750
+            89,
+            521
+          ]
+        },
+        {
+          "action": "double_click",
+          "coordinate": [
+            89,
+            521
+          ]
+        },
+        {
+          "action": "double_click",
+          "coordinate": [
+            89,
+            521
+          ]
+        },
+        {
+          "action": "double_click",
+          "coordinate": [
+            89,
+            521
+          ]
+        },
+        {
+          "action": "double_click",
+          "coordinate": [
+            89,
+            521
+          ]
+        },
+        {
+          "action": "double_click",
+          "coordinate": [
+            89,
+            521
           ]
         }
       ],
-      "count": 5,
+      "count": 12,
       "status": "candidate",
-      "created_at": "2026-04-13T17:10:17.799886",
-      "updated_at": "2026-04-13T17:10:17.799886"
+      "created_at": "2026-05-06T10:43:58.096993",
+      "updated_at": "2026-05-06T11:30:38.418754"
+    },
+    {
+      "cluster_id": "cluster_4f3d5ba4",
+      "pattern": {
+        "instruction_pattern": "双击打开Edge Dev浏览器",
+        "app_context": "新标签页 - 个人 - Microsoft​ Edge Dev",
+        "action_structure": [
+          "double_click"
+        ]
+      },
+      "members": [
+        "12d21c73-9956-4ec8-a703-1c17e0088a68",
+        "b20a62b4-4b56-4a7d-937d-46d0d61df6fd",
+        "097123dc-3f91-4e04-8043-bed3bd54fbcb",
+        "4ec12545-1656-4122-ab86-3e8818912dbc",
+        "d3c9e0e1-440e-4f95-a103-e70452cf10f5",
+        "88c79729-f020-4be3-b991-f23200b2be83",
+        "536f729d-e4d6-49b6-b993-57bda3b73098",
+        "bfabb6d4-f0ab-40f0-aa3b-0bdfff742615",
+        "e2332bff-0f41-4ab8-8a9b-38843d0e148e",
+        "0e877684-8bf4-45dd-962b-87ea7cc80afc",
+        "59321fe4-2724-48b9-a2e7-d445b0f6bc27",
+        "7f9bfc05-76d0-431a-8d3a-2ddb31342432",
+        "5837f4d4-2f1b-4922-98e2-9e282eb9c727",
+        "19721889-ce03-45d7-88f7-af554c185449",
+        "4ceac1ea-6725-4425-a9d0-9510bc95e5eb",
+        "3205ba10-cf83-48e0-8d36-84f6f18eb161",
+        "14543c21-d017-4160-845c-41d961c2f607",
+        "9ccb7039-abc9-47b0-9f4e-012066c04ff0",
+        "23ed20b4-994f-4001-b636-e70f0083c3da",
+        "07def487-d344-4cf3-8cdd-1336563ce267",
+        "ef6a38d4-4202-4249-b923-9703081a7e08",
+        "1dd8fcd7-2b94-43b6-9e71-148729b8104e",
+        "408498f6-5f38-47c3-a8f3-fc2371bd2124",
+        "9f7a8a8a-7de7-4595-b548-afb6b49f4083",
+        "e67f57c3-2b7f-4866-af5a-ac2cfc6ec030",
+        "1abf74f7-65ac-40e3-b144-2feabe0bac41",
+        "9da085e0-2985-4446-80e0-2fde81a11f95",
+        "b22dbad1-f35b-480e-b1a5-5be3d91c075e",
+        "8e7ee07d-58da-46ac-b675-b84aa098700f",
+        "9ff2486e-75c5-4a7c-a15d-8703c2e6511a",
+        "c9c929da-2eac-4f47-8a82-03d9607019bf",
+        "c2e62393-2d0e-40ea-930e-50f9af0fe9e3",
+        "deb569f4-3592-43fe-a09e-70e2d3316233",
+        "2bbca213-01be-4510-be82-805bafa975b7",
+        "da5c0503-397c-446c-9f07-b666661c0ef2",
+        "423a7403-2a85-45c7-95a2-318af1ca645c",
+        "b8091b1c-f015-46d2-acad-a454e731e012",
+        "9d4d5e65-d86d-472f-8d09-fa82be2771a8",
+        "a0fb5773-59fa-4d7b-9c5b-a8f48fa060ae",
+        "13e0ab76-2f4f-4f58-84ff-8108d7549b1f",
+        "b146852f-7771-45a9-8508-0344f30de17d",
+        "cac049be-689f-4edc-970b-9fc4e20024a9",
+        "f799c2b4-147e-45d6-bb54-aa2460727f22",
+        "6b4a6298-d667-4e0d-ac38-f6ede315830b",
+        "4eb6c33f-4572-4f2a-bb63-803e69ac7fc6",
+        "381e5987-f58a-4333-9b3b-53be4a5c225c",
+        "7e947990-a6ac-4b2b-877c-34f86a045d7c",
+        "d16dac85-7b3e-4b41-9b2a-0b202e94a467",
+        "211f53dc-74a7-477f-b992-fde3d1e50cb3",
+        "44ee04a5-61d1-4ca4-ae15-57ed75c211e8",
+        "13cb88fd-3bab-4351-8a8f-8c3739bb5b68",
+        "60ef91d6-4008-47b3-a304-50840dae5c25",
+        "aa118c81-5e1f-4395-bba1-7013c9e56b71",
+        "eafadc89-b956-4759-8f2b-ee13e8ac6766",
+        "88c59053-4c8a-49b5-a172-6c84769e2b82",
+        "a2a59484-c378-4027-bfd1-9c9c7c7b1125",
+        "2d531d8f-932b-42fe-ac5c-b8ab7e145c74",
+        "582b2a85-1eed-48f2-8042-7f787c4d5ff5",
+        "6e7b2e81-3540-4b0c-90e4-3465f6f9f04a",
+        "42c6858d-0720-4db9-aa87-1a252acc7ebc",
+        "687c7cf1-fdfe-4cfe-a71f-6fc2c66a1f38",
+        "6e16fc3b-6b0a-40f7-a54f-98273494f7f4",
+        "6e16fc3b-6b0a-40f7-a54f-98273494f7f4",
+        "2bccd52d-c3b0-4afd-bb2d-9b85d97a2c53",
+        "2c8be0ac-caa4-4d21-80b5-44be8143967a",
+        "1e5b76e1-d4ca-4f7d-b12e-8eab5aaf3714"
+      ],
+      "sample_instructions": [
+        "双击打开Edge Dev浏览器",
+        "双击打开Edge Dev浏览器",
+        "双击打开Edge Dev浏览器",
+        "双击打开Edge Dev浏览器",
+        "双击打开Edge Dev浏览器"
+      ],
+      "sample_actions": [
+        {
+          "action": "double_click",
+          "coordinate": [
+            89,
+            521
+          ]
+        },
+        {
+          "action": "double_click",
+          "coordinate": [
+            89,
+            521
+          ]
+        },
+        {
+          "action": "double_click",
+          "coordinate": [
+            89,
+            521
+          ]
+        },
+        {
+          "action": "double_click",
+          "coordinate": [
+            89,
+            521
+          ]
+        },
+        {
+          "action": "double_click",
+          "coordinate": [
+            88,
+            520
+          ]
+        },
+        {
+          "action": "double_click",
+          "coordinate": [
+            89,
+            527
+          ]
+        },
+        {
+          "action": "double_click",
+          "coordinate": [
+            89,
+            521
+          ]
+        },
+        {
+          "action": "double_click",
+          "coordinate": [
+            89,
+            526
+          ]
+        },
+        {
+          "action": "double_click",
+          "coordinate": [
+            88,
+            520
+          ]
+        },
+        {
+          "action": "double_click",
+          "coordinate": [
+            89,
+            520
+          ]
+        }
+      ],
+      "count": 66,
+      "status": "candidate",
+      "created_at": "2026-05-06T11:13:17.287390",
+      "updated_at": "2026-05-06T11:30:38.418754"
+    },
+    {
+      "cluster_id": "cluster_b9a21ad3",
+      "pattern": {
+        "instruction_pattern": "然后在地图上随机点击一个靠地图右侧的位置执行指派",
+        "app_context": "React App - 个人 - Microsoft​ Edge Dev",
+        "action_structure": [
+          "left_click"
+        ]
+      },
+      "members": [
+        "c0d94780-2430-4338-9110-74df80bb9011",
+        "d898fa6a-6d38-4bc6-ab35-3402e9ae025d",
+        "831460ac-8992-4192-ba0d-4cf2944fc98c",
+        "d9c39a92-07e9-40aa-a605-3e050312abaf",
+        "1422e0d8-a23c-45d0-aa0f-a1aa9225eb20",
+        "c6956736-093f-465c-afea-5b9077d2d6c4",
+        "0b0faa8f-3050-436a-bfda-d24497629781",
+        "4a9145ec-79c1-48a3-97a8-aa584f7f9cef",
+        "b729cdf0-737c-46fa-9280-2ea25dfed7d9",
+        "6bd6ab98-89b3-458d-b199-5b160f1882ef"
+      ],
+      "sample_instructions": [
+        "然后在地图上随机点击一个靠地图右侧的位置执行指派",
+        "然后在地图上随机点击一个靠地图右侧的位置执行指派",
+        "然后在地图上随机点击一个靠地图右侧的位置执行指派",
+        "然后在地图上随机点击一个靠地图右侧的位置执行指派",
+        "然后在地图上随机点击一个靠地图右侧的位置执行指派"
+      ],
+      "sample_actions": [
+        {
+          "action": "left_click",
+          "coordinate": [
+            827,
+            368
+          ]
+        },
+        {
+          "action": "left_click",
+          "coordinate": [
+            785,
+            354
+          ]
+        },
+        {
+          "action": "left_click",
+          "coordinate": [
+            826,
+            342
+          ]
+        },
+        {
+          "action": "left_click",
+          "coordinate": [
+            837,
+            348
+          ]
+        },
+        {
+          "action": "left_click",
+          "coordinate": [
+            827,
+            341
+          ]
+        },
+        {
+          "action": "left_click",
+          "coordinate": [
+            730,
+            307
+          ]
+        },
+        {
+          "action": "left_click",
+          "coordinate": [
+            800,
+            341
+          ]
+        },
+        {
+          "action": "left_click",
+          "coordinate": [
+            489,
+            493
+          ]
+        },
+        {
+          "action": "left_click",
+          "coordinate": [
+            723,
+            275
+          ]
+        },
+        {
+          "action": "left_click",
+          "coordinate": [
+            1873,
+            590
+          ]
+        }
+      ],
+      "count": 10,
+      "status": "candidate",
+      "created_at": "2026-05-06T11:30:38.419436",
+      "updated_at": "2026-05-06T11:30:38.419436"
     }
   ],
   "updated_at": "2026-04-08T12:00:00.000000",
-  "last_scan": "2026-04-13T17:10:17.802443",
-  "last_scan_log_id": "2584b648-df1b-47ab-9de2-936c480acad4"
+  "last_scan": "2026-05-06T11:30:38.421208",
+  "last_scan_log_id": "c0d94780-2430-4338-9110-74df80bb9011"
 }

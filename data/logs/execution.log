@@ -1,0 +1,11 @@
+2026-05-06 16:26:29,625 - utils.action_resolver - WARNING - OCR could not locate 'F22-207'
+2026-05-06 16:26:29,626 - utils.action_resolver - WARNING - Cannot resolve offset expression: no previous coordinate set
+2026-05-06 16:26:29,626 - utils.action_resolver - WARNING - Unresolved placeholder in coordinate: {{prev_x+20}}, {{prev_y+120}}
+2026-05-07 17:35:57,971 - websocket - ERROR - fin=1 opcode=8 data=b'\x03\xf4' - goodbye
+2026-05-07 18:12:08,437 - websocket - ERROR - fin=1 opcode=8 data=b'\x03\xf4' - goodbye
+2026-05-10 17:56:15,221 - websocket - ERROR - fin=1 opcode=8 data=b'\x03\xf4' - goodbye
+2026-05-12 14:24:54,905 - websocket - ERROR - [WinError 10061] 由于目标计算机积极拒绝，无法连接。 - goodbye
+2026-05-12 14:25:04,110 - websocket - ERROR - [WinError 10061] 由于目标计算机积极拒绝，无法连接。 - goodbye
+2026-05-12 14:28:54,481 - websocket - ERROR - [WinError 10061] 由于目标计算机积极拒绝，无法连接。 - goodbye
+2026-05-12 14:29:11,761 - websocket - ERROR - [WinError 10061] 由于目标计算机积极拒绝，无法连接。 - goodbye
+2026-05-12 14:41:41,012 - websocket - ERROR - [WinError 10061] 由于目标计算机积极拒绝，无法连接。 - goodbye

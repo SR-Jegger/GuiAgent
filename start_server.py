@@ -12,8 +12,8 @@ Examples:
 """
 
 import argparse
-import subprocess
 import sys
+import signal
 
 
 def main():
@@ -40,17 +40,6 @@ def main():
 
     args = parser.parse_args()
 
-    # Build uvicorn command
-    cmd = [
-        sys.executable, "-m", "uvicorn",
-        "app.server:app",
-        "--host", args.host,
-        "--port", str(args.port),
-    ]
-
-    if args.reload:
-        cmd.append("--reload")
-
     address = "192.168.137.1"
     print("=" * 60)
     print("Starting GUI Agent Server...")
@@ -65,12 +54,19 @@ def main():
     print(f"\nPress Ctrl+C to stop the server\n")
     print("=" * 60)
 
-    # Run uvicorn
+    # 直接运行 uvicorn（而非 subprocess），以便正确处理信号
+    import uvicorn
+
     try:
-        subprocess.run(cmd, check=True)
+        uvicorn.run(
+            "app.server:app",
+            host=args.host,
+            port=args.port,
+            reload=args.reload,
+        )
     except KeyboardInterrupt:
         print("\n[Server] Stopped by user")
-    except subprocess.CalledProcessError as e:
+    except Exception as e:
         print(f"\n[Server] Error: {e}")
         sys.exit(1)
 

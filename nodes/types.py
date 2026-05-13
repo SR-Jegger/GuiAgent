@@ -111,5 +111,9 @@ class AgentState(TypedDict, total=False):
     use_intent_mapping: bool  # Whether to use intent mapping for task decomposition
     intent_mapping_config_path: Optional[str]  # Path to intent mapping config file
 
+    # Semantic matching result (from voice input)
+    semantic_matched_id: Optional[str]  # matched_id from semantic matcher
+    semantic_parameters: Optional[dict]  # extracted parameters from semantic matcher
+
     # Cancellation support (asyncio.Event is not serializable but works for runtime)
     stop_event: Optional[Any]  # asyncio.Event for task cancellation

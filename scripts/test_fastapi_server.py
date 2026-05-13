@@ -292,7 +292,7 @@ def main(mdpath: str = "../test_md/test_ui9.md"):
 
 
 if __name__ == "__main__":
-    mdpath = "../test_md/test_ui10.md"
+    mdpath = "../test_md/test_ui7.md"
     main(mdpath)
 
 

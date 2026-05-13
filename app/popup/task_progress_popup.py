@@ -187,7 +187,7 @@ def _build_task_progress_window():
                 | QtCore.Qt.WindowStaysOnTopHint
             )
             self.setAttribute(QtCore.Qt.WA_TranslucentBackground, True)
-            self.resize(450, 280)
+            self.resize(450, 220)
 
             shadow = QtWidgets.QGraphicsDropShadowEffect(self)
             shadow.setBlurRadius(34)
@@ -239,9 +239,6 @@ def _build_task_progress_window():
 
             self.current_card = self._build_step_card("当前步骤", True)
             layout.addWidget(self.current_card["frame"])
-
-            self.next_card = self._build_step_card("下一步", False)
-            layout.addWidget(self.next_card["frame"])
 
             footer_row = QtWidgets.QHBoxLayout()
             footer_row.setSpacing(8)
@@ -423,7 +420,6 @@ def _build_task_progress_window():
             )
             self.previous_card["text"].setText(snapshot.previous_step or "无")
             self.current_card["text"].setText(snapshot.current_step or "无")
-            self.next_card["text"].setText(snapshot.next_step or "无")
             self.message_label.setText(snapshot.status_message or "")
             self.hint_label.setText(self._hint_text(snapshot))
             self.cancel_button.setEnabled(snapshot.can_cancel)

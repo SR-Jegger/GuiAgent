@@ -1,40 +1,130 @@
 {
-  "version": "1.0",
-  "description": "业务意图到操作步骤的映射配置",
+  "version": "2.1",
+  "description": "统一意图映射配置 - 语音直接匹配到执行步骤",
   "mappings": [
     {
-      "intent": "飞机任务指派",
-      "keywords": ["飞机", "任务", "指派"],
-      "match_groups": ["[A-Za-z]+\\d+-\\d+", "目标(.*)"],
+      "id": "platform_locate_confirm",
+      "description": "平台定位确认",
+      "aliases": ["定位确认", "平台定位", "确认定位"],
+      "keywords": ["平台", "定位", "确认"],
+      "parameters": [
+        {
+          "name": "platform_id",
+          "description": "平台编号（数字）",
+          "extract_pattern": "any_number",
+          "required": true,
+          "examples": ["206", "二零六", "三百零一"]
+        }
+      ],
       "sub_steps": [
         "双击打开Edge Dev浏览器图标",
         "输入http://localhost:3000/，进入无人作战指挥系统页面",
-        "右键点击{{match_group_1}}号平台卡片",
-        "菜单中选择执行指派任务",
-        "任务名称一栏输入打击任务-C1",
-        "打击/侦察目标一栏输入{{match_group_2}}",
-        "点击确认并选择目标位置按钮",
-        "然后在地图上随机点击一个靠地图右侧的位置执行指派"
+        "右键点击{{platform_id}}号平台卡片",
+        "菜单中选择定位确认",
+        "点击确认按钮完成定位确认"
       ],
       "enabled": true
     },
     {
-      "intent": "关闭窗口",
-      "keywords": ["关闭", "窗口"],
-      "match_groups": [],
+      "id": "platform_task_assign",
+      "description": "平台任务指派",
+      "aliases": ["任务指派", "指派任务", "执行指派"],
+      "keywords": ["平台", "任务", "指派", "执行"],
+      "parameters": [
+        {
+          "name": "platform_id",
+          "description": "平台编号（数字）",
+          "extract_pattern": "any_number",
+          "required": true,
+          "examples": ["206", "二零六", "三百零一"]
+        }
+      ],
+      "sub_steps": [
+        "双击打开Edge Dev浏览器图标",
+        "输入http://localhost:3000/，进入无人作战指挥系统页面",
+        "右键点击{{platform_id}}号平台卡片",
+        "仅执行：在弹出的菜单中选择执行指派任务选项",
+        "任务名称一栏输入打击任务-C1",
+        "打击/侦察目标一栏输入肯纳德基地",
+        "仅执行：点击确认并选择目标位置按钮",
+        "在地图上点击一个靠右侧的位置执行指派"
+      ],
+      "enabled": true
+    },
+    {
+      "id": "open_edge",
+      "description": "打开Edge浏览器",
+      "aliases": ["启动浏览器", "打开Edge", "启动Edge浏览器", "打开微软浏览器"],
+      "keywords": ["浏览器", "Edge", "打开", "启动", "网页"],
+      "parameters": [],
+      "sub_steps": [
+        "双击桌面上的Edge Dev浏览器图标"
+      ],
+      "enabled": true
+    },
+    {
+      "id": "open_chrome",
+      "description": "打开Chrome浏览器",
+      "aliases": ["启动Chrome", "打开谷歌浏览器"],
+      "keywords": ["Chrome", "谷歌", "浏览器"],
+      "parameters": [],
+      "sub_steps": [
+        "双击桌面上的Chrome浏览器图标"
+      ],
+      "enabled": true
+    },
+    {
+      "id": "open_file_manager",
+      "description": "打开文件管理器",
+      "aliases": ["打开文件夹", "查看文件", "资源管理器", "打开我的电脑"],
+      "keywords": ["文件", "文件夹", "管理器", "电脑", "资源"],
+      "parameters": [],
+      "sub_steps": [
+        "打开Windows文件资源管理器"
+      ],
+      "enabled": true
+    },
+    {
+      "id": "search_baidu",
+      "description": "百度搜索",
+      "aliases": ["搜索一下", "百度查一下", "帮我搜索"],
+      "keywords": ["搜索", "查", "百度", "找"],
+      "parameters": [
+        {
+          "name": "search_content",
+          "description": "搜索内容",
+          "extract_pattern": "搜索(.*)|查(.*)|找(.*)",
+          "required": true
+        }
+      ],
+      "sub_steps": [
+        "双击打开Edge Dev浏览器图标",
+        "在地址栏输入baidu.com并回车",
+        "在搜索框输入{{search_content}}并回车"
+      ],
+      "enabled": true
+    },
+    {
+      "id": "close_window",
+      "description": "关闭当前窗口",
+      "aliases": ["关闭窗口", "退出程序", "关掉"],
+      "keywords": ["关闭", "退出", "关掉", "窗口"],
+      "parameters": [],
       "sub_steps": [
         "点击窗口右上角关闭按钮"
       ],
       "enabled": true
     },
     {
-      "intent": "打开浏览器",
-      "keywords": ["打开", "浏览器"],
-      "match_groups": [],
+      "id": "open_notepad",
+      "description": "打开记事本",
+      "aliases": ["新建记事本", "打开文本编辑器"],
+      "keywords": ["记事本", "文本", "编辑"],
+      "parameters": [],
       "sub_steps": [
-        "双击桌面浏览器图标"
+        "打开Windows记事本"
       ],
-      "enabled": false
+      "enabled": true
     }
   ]
 }

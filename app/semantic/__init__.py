@@ -1,0 +1,20 @@
+"""语义匹配模块
+
+提供语音转写文本的语义匹配功能，直接从统一配置文件加载。
+"""
+
+from app.semantic.semantic_matcher import (
+    SemanticMatcher,
+    RuleBasedMatcher,
+    MatchResult,
+    load_intent_mappings,
+    chinese_to_number,
+)
+
+__all__ = [
+    "SemanticMatcher",
+    "RuleBasedMatcher",
+    "MatchResult",
+    "load_intent_mappings",
+    "chinese_to_number",
+]

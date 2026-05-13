@@ -25,9 +25,10 @@ class IntentMappingConfig:
     Load and manage intent-to-steps mappings from JSON config.
 
     Features:
-    - Keyword-based intent matching
+    - ID-based matching (关联语义库的 matched_id)
+    - Keyword-based intent matching (fallback)
     - Dynamic parameter extraction (match_groups)
-    - Parameter substitution in sub_steps ({{match_group_1}}, etc.)
+    - Parameter substitution in sub_steps ({{param_name}}, {{match_group_1}}, etc.)
     """
 
     def __init__(self, config_path: str = "data/intent_mappings.json"):
@@ -39,6 +40,7 @@ class IntentMappingConfig:
         """
         self.config_path = config_path
         self.mappings: List[Dict] = []
+        self.mappings_by_id: Dict[str, Dict] = {}  # ID -> mapping dict
         self._load_config()
 
     def _load_config(self) -> bool:
@@ -55,11 +57,54 @@ class IntentMappingConfig:
             # Filter enabled mappings
             self.mappings = [m for m in self.mappings if m.get("enabled", True)]
 
+            # Build ID index
+            for mapping in self.mappings:
+                mapping_id = mapping.get("id")
+                if mapping_id:
+                    self.mappings_by_id[mapping_id] = mapping
+
             print(f"[INTENT_MAPPING] Loaded {len(self.mappings)} enabled mappings from {self.config_path}")
+            print(f"[INTENT_MAPPING] Available IDs: {list(self.mappings_by_id.keys())}")
             return True
         except Exception as e:
             print(f"[INTENT_MAPPING] Error loading config: {e}")
             return False
+
+    def get_mapping_by_id(self, mapping_id: str) -> Optional[Dict]:
+        """
+        Get mapping by ID (直接关联语义库的 matched_id).
+
+        Args:
+            mapping_id: The ID from semantic matcher result
+
+        Returns:
+            Mapping dict if found, None otherwise
+        """
+        return self.mappings_by_id.get(mapping_id)
+
+    def substitute_params(self, sub_steps: List[str], parameters: Dict) -> List[str]:
+        """
+        Substitute placeholders in sub_steps with parameters.
+
+        Placeholder format: {{param_name}}
+
+        Args:
+            sub_steps: List of step descriptions with placeholders
+            parameters: Dict of param_name -> param_value
+
+        Returns:
+            List of substituted step descriptions
+        """
+        result = []
+        for step in sub_steps:
+            substituted = step
+            for param_name, param_value in parameters.items():
+                substituted = substituted.replace(f"{{{{{param_name}}}}}", str(param_value))
+            result.append(substituted)
+            if substituted != step:
+                print(f"[INTENT_MAPPING] Substituted: '{step}' → '{substituted}'")
+
+        return result
 
     def match(self, instruction: str) -> Optional[Tuple[Dict, Tuple]]:
         """
@@ -295,9 +340,9 @@ def task_decomposer_node(state: AgentState) -> AgentState:
     the state for iterative step execution.
 
     Flow:
-    1. Check use_intent_mapping flag to determine decomposition mode
-    2. If enabled: Try intent mapping first, fallback to text parsing
-    3. If disabled: Use text parsing directly
+    1. 优先检查语义匹配结果 (semantic_matched_id + semantic_parameters)
+    2. 如果有 matched_id，直接用 ID 查找意图映射，注入参数生成步骤
+    3. 如果没有 matched_id 或映射不存在，fallback 到关键词匹配或文本解析
     4. Store global_task_instruction for context
     5. Initialize sub_steps list and current_step_index
     6. Pass control to fast_path for the first sub-step
@@ -312,30 +357,56 @@ def task_decomposer_node(state: AgentState) -> AgentState:
     task_name = state.get("task_name", "unknown_task")
 
     # Control parameter: use intent mapping or text parsing
-    use_intent_mapping = state.get("use_intent_mapping", False)  # Default: enabled
+    use_intent_mapping = state.get("use_intent_mapping", False)
     intent_mapping_config_path = state.get("intent_mapping_config_path", "data/intent_mappings.json")
+
+    # Semantic matching result (from voice input)
+    semantic_matched_id = state.get("semantic_matched_id")
+    semantic_parameters = state.get("semantic_parameters", {})
 
     print("\n" + "=" * 60)
     print(f"[TASK_DECOMPOSER] Processing task: {task_name}")
     print(f"[TASK_DECOMPOSER] Intent mapping mode: {use_intent_mapping}")
+    print(f"[TASK_DECOMPOSER] Semantic matched_id: {semantic_matched_id}")
+    print(f"[TASK_DECOMPOSER] Semantic parameters: {semantic_parameters}")
     print("=" * 60)
 
     # Parse task into sub-steps
     sub_steps = []
 
-    if use_intent_mapping:
-        # Try intent mapping first
+    # === 优先路径：语义匹配结果直接关联意图映射 ===
+    if semantic_matched_id:
+        config = get_intent_mapping_config(intent_mapping_config_path)
+        mapping = config.get_mapping_by_id(semantic_matched_id)
+
+        if mapping:
+            sub_steps_template = mapping.get("sub_steps", [])
+            # 用语义匹配提取的参数注入步骤模板
+            sub_steps_desc = config.substitute_params(sub_steps_template, semantic_parameters)
+
+            for i, desc in enumerate(sub_steps_desc, 1):
+                sub_steps.append({
+                    "step_id": i,
+                    "description": desc,
+                    "status": "pending"
+                })
+
+            print(f"[TASK_DECOMPOSER] Semantic ID matched, generated {len(sub_steps)} steps from intent mapping")
+            print(f"[TASK_DECOMPOSER] Mapping ID: {semantic_matched_id}, Description: {mapping.get('description', '')}")
+        else:
+            print(f"[TASK_DECOMPOSER] Semantic matched_id '{semantic_matched_id}' not found in intent mappings")
+
+    # === Fallback 1: 传统关键词匹配 ===
+    if not sub_steps and use_intent_mapping:
         mapped_steps = match_intent_to_steps(instruction, intent_mapping_config_path)
 
         if mapped_steps is not None:
             sub_steps = mapped_steps
-            print(f"[TASK_DECOMPOSER] Intent mapping matched, using mapped sub-steps")
+            print(f"[TASK_DECOMPOSER] Keyword-based intent mapping matched, using mapped sub-steps")
         else:
             print(f"[TASK_DECOMPOSER] No intent mapping matched, falling back to text parsing")
 
-    # Fallback to text parsing if:
-    # 1. use_intent_mapping is False
-    # 2. use_intent_mapping is True but no mapping matched
+    # === Fallback 2: 文本解析 ===
     if not sub_steps:
         sub_steps = parse_task_into_steps(instruction)
 

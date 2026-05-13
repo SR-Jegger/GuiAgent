@@ -6,9 +6,9 @@ For API usage, import run_agent_async from agent_graph.
 
 Usage:
     cd Mobile-Agent-v3.5/computer_use
-    python run_agent.py \\
-        --instruction "The instruction you want the agent to complete" \\
-        --model "Model name" \\
+    python run_agent.py \
+        --instruction "The instruction you want the agent to complete" \
+        --model "Model name" \
         --add_info "Optional supplementary knowledge"
 
 Example:
@@ -20,8 +20,22 @@ import sys
 import os
 import json
 
-os.environ["NO_PROXY"] = "192.168.137.2"
-os.environ["no_proxy"] = "192.168.137.2"
+# 设置 NO_PROXY（从配置文件读取，避免代理干扰本地服务）
+def _setup_no_proxy():
+    """从配置文件读取 ASR host 并设置 NO_PROXY"""
+    try:
+        config_path = "nodes/model_config.json"
+        if os.path.exists(config_path):
+            config = json.load(open(config_path))
+            asr_host = config.get("asr", {}).get("host", "192.168.137.2")
+            os.environ["NO_PROXY"] = asr_host
+            os.environ["no_proxy"] = asr_host
+    except Exception:
+        # 默认值
+        os.environ["NO_PROXY"] = "192.168.137.2"
+        os.environ["no_proxy"] = "192.168.137.2"
+
+_setup_no_proxy()
 
 from agent_graph import run_agent
 from utils.utils import process_markdown_task

@@ -231,7 +231,7 @@ def execution_node(state: AgentState) -> AgentState:
         "fast_path_matched": False,  # Reset fast path flag after execution
         "error_message": None,
         "retry_count": 0,
-        "sub_flag": state.get("sub_flag", True),  # Pass through sub
+        "continue_substep_flag": state.get("continue_substep_flag", True),  # Pass through flag for router
         "stop_flag": stop_flag,
         "history": history if not fast_path_matched else state.get("history", []),
     }
