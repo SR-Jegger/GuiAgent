@@ -1,7 +1,7 @@
 """主入口交互卡片
 
 服务启动时显示的任务入口卡片，包含：
-- 任务输入区（文字 + 语音）
+- 任务输入区（文字 + 语音 + 预存指令）
 - 执行进展区
 """
 
@@ -21,6 +21,7 @@ from app.popup.task_progress import (
     TaskProgressSnapshot,
     STATUS_LABELS,
 )
+from app.popup.preset_commands import create_preset_system, PRESETS
 
 
 class CardState(str, Enum):
@@ -312,6 +313,10 @@ def _build_main_entry_window():
             self._progress_snapshot: Optional[TaskProgressSnapshot] = None
             self._countdown_text: str = ""  # 倒计时显示文本
 
+            # Create preset panel
+            self._preset_btn = None
+            self._preset_panel = None
+
             self._init_window()
             self._build_ui()
 
@@ -328,7 +333,7 @@ def _build_main_entry_window():
                 | QtCore.Qt.WindowStaysOnTopHint
             )
             self.setAttribute(QtCore.Qt.WA_TranslucentBackground, True)
-            self.resize(450, 380)
+            self.resize(450, 400)
 
             shadow = QtWidgets.QGraphicsDropShadowEffect(self)
             shadow.setBlurRadius(34)
@@ -348,10 +353,26 @@ def _build_main_entry_window():
             layout.setContentsMargins(18, 16, 18, 16)
             layout.setSpacing(12)
 
-            # === 标题区 ===
+            # === 标题行（左边标题，右边倒计时）===
+            title_row = QtWidgets.QHBoxLayout()
+            layout.addLayout(title_row)
+
             title_label = QtWidgets.QLabel("GUI Agent - 任务执行入口")
             title_label.setObjectName("CardTitle")
-            layout.addWidget(title_label)
+            title_row.addWidget(title_label)
+
+            title_row.addStretch(1)
+
+            # 倒计时光圈组件（右上角）
+            self.countdown_circle = CountdownCircle(duration=2000)
+            self.countdown_circle.on_complete = self._on_countdown_complete
+            title_row.addWidget(self.countdown_circle)
+
+            # 倒计时提示文本（右上角，光圈旁）
+            self.countdown_hint = QtWidgets.QLabel()
+            self.countdown_hint.setObjectName("CountdownHint")
+            self.countdown_hint.setVisible(False)
+            title_row.addWidget(self.countdown_hint)
 
             # === 输入区 ===
             input_section = QtWidgets.QVBoxLayout()
@@ -369,26 +390,23 @@ def _build_main_entry_window():
             self.text_input.setMaximumHeight(80)
             input_section.addWidget(self.text_input)
 
-            # 按钮行（含倒计时光圈）
+            # === 三按钮均分一行 ===
             button_row = QtWidgets.QHBoxLayout()
-            button_row.setSpacing(8)
+            button_row.setSpacing(12)
             input_section.addLayout(button_row)
+
+            # 预存指令按钮
+            self._preset_btn, self._preset_panel = create_preset_system(
+                self,
+                on_select=lambda text: self.text_input.setText(text),
+                presets=PRESETS,
+            )
+            button_row.addWidget(self._preset_btn, 1)
 
             self.voice_button = QtWidgets.QPushButton("🎤 语音输入")
             self.voice_button.setObjectName("VoiceButton")
             self.voice_button.clicked.connect(self._toggle_voice_recording)
-            button_row.addWidget(self.voice_button)
-
-            # 倒计时光圈组件
-            self.countdown_circle = CountdownCircle(duration=2000)
-            self.countdown_circle.on_complete = self._on_countdown_complete
-            button_row.addWidget(self.countdown_circle)
-
-            # 倒计时提示文本
-            self.countdown_hint = QtWidgets.QLabel()
-            self.countdown_hint.setObjectName("CountdownHint")
-            self.countdown_hint.setVisible(False)
-            button_row.addWidget(self.countdown_hint, 1)
+            button_row.addWidget(self.voice_button, 1)
 
             self.submit_button = QtWidgets.QPushButton("✓ 确认执行")
             self.submit_button.setObjectName("SubmitButton")
@@ -424,7 +442,7 @@ def _build_main_entry_window():
             self.status_message.setWordWrap(True)
             progress_section.addWidget(self.status_message)
 
-            # === 底部状态提示 ===
+            # === 底部状态提示行（左状态，右取消按钮）===
             footer_row = QtWidgets.QHBoxLayout()
             footer_row.setSpacing(8)
             layout.addLayout(footer_row)
@@ -629,6 +647,8 @@ def _build_main_entry_window():
                 self.voice_button.setStyleSheet("")
                 self.voice_button.setEnabled(False)
                 self.cancel_button.setEnabled(True)  # 启用取消按钮
+                if self._preset_btn:
+                    self._preset_btn.setEnabled(False)
 
                 # 显示倒计时提示
                 self.countdown_hint.setVisible(True)
@@ -649,6 +669,8 @@ def _build_main_entry_window():
                     self._state = CardState.RECORDING
                     self.voice_button.setText("🔴 正在录音...")
                     self.voice_button.setStyleSheet("background: #EF4444;")
+                    if self._preset_btn:
+                        self._preset_btn.setEnabled(False)
                     self.hint_label.setText("正在录音，说话结束后自动执行...")
             else:
                 # IDLE 或其他状态：开始录音（带 final 回调）
@@ -660,8 +682,8 @@ def _build_main_entry_window():
                     self._state = CardState.RECORDING
                     self.voice_button.setText("🔴 正在录音...")
                     self.voice_button.setStyleSheet("background: #EF4444;")
-                    self.hint_label.setText("正在录音，说话结束后自动执行...")
-                    self.voice_button.setStyleSheet("background: #EF4444;")
+                    if self._preset_btn:
+                        self._preset_btn.setEnabled(False)
                     self.hint_label.setText("正在录音，点击停止...")
                 else:
                     self.hint_label.setText("语音服务连接失败")
@@ -697,6 +719,8 @@ def _build_main_entry_window():
             self.voice_button.setStyleSheet("")
             self.voice_button.setEnabled(False)
             self.cancel_button.setEnabled(True)
+            if self._preset_btn:
+                self._preset_btn.setEnabled(False)
 
             # 显示倒计时提示
             self.countdown_hint.setVisible(True)
@@ -728,6 +752,8 @@ def _build_main_entry_window():
             self.submit_button.setEnabled(False)
             self.cancel_button.setEnabled(True)
             self.voice_button.setEnabled(False)
+            if self._preset_btn:
+                self._preset_btn.setEnabled(False)
             self.hint_label.setText("任务执行中...")
 
             if self.on_submit:
@@ -751,6 +777,8 @@ def _build_main_entry_window():
             self.submit_button.setEnabled(False)
             self.cancel_button.setEnabled(True)
             self.voice_button.setEnabled(False)
+            if self._preset_btn:
+                self._preset_btn.setEnabled(False)
             self.hint_label.setText("任务执行中...")
 
             if self.on_submit:
@@ -771,6 +799,8 @@ def _build_main_entry_window():
             self.voice_button.setEnabled(True)
             self.voice_button.setText("🎤 语音输入")
             self.voice_button.setStyleSheet("")
+            if self._preset_btn:
+                self._preset_btn.setEnabled(True)
             self.hint_label.setText("等待任务输入")
 
         def _cancel_task(self) -> None:
@@ -820,6 +850,8 @@ def _build_main_entry_window():
                 self.submit_button.setEnabled(True)
                 self.cancel_button.setEnabled(False)
                 self.voice_button.setEnabled(True)
+                if self._preset_btn:
+                    self._preset_btn.setEnabled(True)
                 self.hint_label.setText("任务完成，可输入新任务")
                 self.status_message.setStyleSheet("color: #10B981;")
             elif state == CardState.FAILED.value:
@@ -827,6 +859,8 @@ def _build_main_entry_window():
                 self.submit_button.setEnabled(True)
                 self.cancel_button.setEnabled(False)
                 self.voice_button.setEnabled(True)
+                if self._preset_btn:
+                    self._preset_btn.setEnabled(True)
                 self.hint_label.setText("任务失败，可重新输入")
                 self.status_message.setStyleSheet("color: #EF4444;")
             elif state == CardState.CANCELLED.value:
@@ -834,6 +868,8 @@ def _build_main_entry_window():
                 self.submit_button.setEnabled(True)
                 self.cancel_button.setEnabled(False)
                 self.voice_button.setEnabled(True)
+                if self._preset_btn:
+                    self._preset_btn.setEnabled(True)
                 self.hint_label.setText("任务已取消，可重新输入")
                 self.status_message.setStyleSheet("color: #64748B;")
 

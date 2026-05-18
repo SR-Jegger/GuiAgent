@@ -23,8 +23,8 @@ def main():
     parser.add_argument(
         "--host",
         type=str,
-        default="192.168.137.1",
-        help="Host to bind to (default: 192.168.137.1)"
+        default="0.0.0.0",
+        help="Host to bind to (default: 0.0.0.0)"
     )
     parser.add_argument(
         "--port",
@@ -40,7 +40,7 @@ def main():
 
     args = parser.parse_args()
 
-    address = "192.168.137.1"
+    address = args.host
     print("=" * 60)
     print("Starting GUI Agent Server...")
     print("=" * 60)

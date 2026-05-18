@@ -6,8 +6,14 @@ identify similar operations for skill learning.
 """
 
 import hashlib
+import math
 from datetime import datetime
 from typing import Optional, List, Dict
+
+
+# Maximum allowed coordinate distance for clustering (normalized 0-1000 range)
+# 70 ≈ 5% of screen diagonal, suitable for button-level tolerance
+MAX_COORD_DISTANCE = 70
 
 
 def compute_instruction_hash(instruction: str) -> str:
@@ -114,11 +120,54 @@ def action_structure_similarity(structure1: list, structure2: list) -> float:
     return jaccard_similarity(set1, set2)
 
 
+def get_first_coordinate(log: dict) -> Optional[List[int]]:
+    """
+    Extract the first coordinate from an operation log.
+
+    Coordinates are stored in normalized 0-1000 range.
+
+    Args:
+        log: Operation log dict
+
+    Returns:
+        Coordinate [x, y] or None if not found
+    """
+    actions = log.get("actions", [])
+    if not actions:
+        return None
+
+    for action in actions:
+        for key in ("coordinate", "coordinate1"):
+            if key in action:
+                coord = action[key]
+                if isinstance(coord, list) and len(coord) >= 2:
+                    return coord
+    return None
+
+
+def coordinate_distance(coord1: List[int], coord2: List[int]) -> float:
+    """
+    Calculate Euclidean distance between two normalized coordinates.
+
+    Args:
+        coord1: First coordinate [x, y] (0-1000 range)
+        coord2: Second coordinate [x, y] (0-1000 range)
+
+    Returns:
+        Distance in normalized units
+    """
+    return math.sqrt(
+        (coord1[0] - coord2[0]) ** 2 +
+        (coord1[1] - coord2[1]) ** 2
+    )
+
+
 def is_same_operation(
     op1: dict,
     op2: dict,
     instruction_threshold: float = 0.6,
     structure_threshold: float = 0.8,
+    coord_max_distance: float = MAX_COORD_DISTANCE,
 ) -> bool:
     """
     Determine if two operations are the "same" for clustering purposes.
@@ -127,12 +176,14 @@ def is_same_operation(
     1. They have similar instructions (semantic similarity)
     2. They have similar action structures
     3. They operate in the same application context
+    4. They click/act at similar coordinates (within tolerance)
 
     Args:
         op1: First operation dict
         op2: Second operation dict
         instruction_threshold: Minimum instruction similarity
         structure_threshold: Minimum action structure similarity
+        coord_max_distance: Maximum allowed coordinate distance (normalized 0-1000)
 
     Returns:
         True if operations are considered the same
@@ -170,6 +221,17 @@ def is_same_operation(
     if struct1 and struct2:
         struct_sim = action_structure_similarity(struct1, struct2)
         if struct_sim < structure_threshold:
+            return False
+
+    # Check coordinate similarity (new)
+    # Only check if both operations have coordinates
+    coord1 = get_first_coordinate(op1)
+    coord2 = get_first_coordinate(op2)
+
+    if coord1 and coord2:
+        distance = coordinate_distance(coord1, coord2)
+        if distance > coord_max_distance:
+            # Clicking different positions, should not cluster
             return False
 
     return True
