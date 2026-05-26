@@ -355,6 +355,43 @@
       ],
       "enabled": true,
       "confidence": 0.7
+    },
+    {
+      "id": "manual_f072e063",
+      "name": "指控命令_单击",
+      "description": "左键单击打开指控命令菜单",
+      "source": "manual",
+      "cluster_type": "single",
+      "trigger": {
+        "patterns": [
+          "打开指控命令菜单"
+        ],
+        "app_context": [
+          "新标签页 - 个人 - Microsoft​ Edge Dev"
+        ]
+      },
+      "actions": [
+        {
+          "type": "left_click",
+          "coordinate": [
+            90,
+            512
+          ],
+          "coordinate_normalized": true
+        }
+      ],
+      "icon_data": {
+        "icon_path": "data/screenshots/command_menu_icon.png",
+        "recorded_resolution": [
+          2560,
+          1440
+        ]
+      },
+      "parameters": null,
+      "enabled": true,
+      "confidence": 0.8,
+      "created_at": "2026-05-19T16:51:06.230448",
+      "updated_at": "2026-05-19T16:51:06.230448"
     }
   ],
   "coordinate_normalized": true,

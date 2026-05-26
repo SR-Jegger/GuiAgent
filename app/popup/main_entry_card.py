@@ -317,6 +317,11 @@ def _build_main_entry_window():
             self._preset_btn = None
             self._preset_panel = None
 
+            # 折叠状态
+            self._collapsed = False
+            self._full_height = 400  # 完整高度
+            self._collapsed_height = 65  # 折叠高度（标题行 + 状态行）
+
             self._init_window()
             self._build_ui()
 
@@ -353,15 +358,28 @@ def _build_main_entry_window():
             layout.setContentsMargins(18, 16, 18, 16)
             layout.setSpacing(12)
 
-            # === 标题行（左边标题，右边倒计时）===
+            # === 标题行（左边标题和状态，右边折叠按钮和倒计时）===
             title_row = QtWidgets.QHBoxLayout()
             layout.addLayout(title_row)
 
-            title_label = QtWidgets.QLabel("GUI Agent - 任务执行入口")
+            title_label = QtWidgets.QLabel("GUI Agent")
             title_label.setObjectName("CardTitle")
             title_row.addWidget(title_label)
 
+            # 折叠时的状态标签
+            self.collapsed_status = QtWidgets.QLabel("")
+            self.collapsed_status.setObjectName("CollapsedStatus")
+            self.collapsed_status.setVisible(False)
+            title_row.addWidget(self.collapsed_status)
+
             title_row.addStretch(1)
+
+            # 折叠按钮（右上角）
+            self.collapse_button = QtWidgets.QPushButton("▼")
+            self.collapse_button.setObjectName("CollapseButton")
+            self.collapse_button.setFixedSize(28, 28)
+            self.collapse_button.clicked.connect(self._toggle_collapse)
+            title_row.addWidget(self.collapse_button)
 
             # 倒计时光圈组件（右上角）
             self.countdown_circle = CountdownCircle(duration=2000)
@@ -374,10 +392,17 @@ def _build_main_entry_window():
             self.countdown_hint.setVisible(False)
             title_row.addWidget(self.countdown_hint)
 
+            # === 可折叠内容区 ===
+            self.collapsible_content = QtWidgets.QWidget()
+            content_layout = QtWidgets.QVBoxLayout(self.collapsible_content)
+            content_layout.setContentsMargins(0, 0, 0, 0)
+            content_layout.setSpacing(12)
+            layout.addWidget(self.collapsible_content)
+
             # === 输入区 ===
             input_section = QtWidgets.QVBoxLayout()
             input_section.setSpacing(6)
-            layout.addLayout(input_section)
+            content_layout.addLayout(input_section)
 
             input_hint = QtWidgets.QLabel("任务指令：")
             input_hint.setObjectName("SectionHint")
@@ -417,12 +442,12 @@ def _build_main_entry_window():
             separator = QtWidgets.QFrame()
             separator.setFrameShape(QtWidgets.QFrame.HLine)
             separator.setObjectName("Separator")
-            layout.addWidget(separator)
+            content_layout.addWidget(separator)
 
             # === 进展区 ===
             progress_section = QtWidgets.QVBoxLayout()
             progress_section.setSpacing(6)
-            layout.addLayout(progress_section)
+            content_layout.addLayout(progress_section)
 
             progress_hint = QtWidgets.QLabel("执行进展：")
             progress_hint.setObjectName("SectionHint")
@@ -445,7 +470,7 @@ def _build_main_entry_window():
             # === 底部状态提示行（左状态，右取消按钮）===
             footer_row = QtWidgets.QHBoxLayout()
             footer_row.setSpacing(8)
-            layout.addLayout(footer_row)
+            content_layout.addLayout(footer_row)
 
             self.hint_label = QtWidgets.QLabel("等待任务输入")
             self.hint_label.setObjectName("FooterHint")
@@ -598,6 +623,23 @@ def _build_main_entry_window():
                 #CancelButton:disabled {
                     background: rgba(100, 116, 139, 0.45);
                     color: #D0D7E5;
+                }
+                #CollapseButton {
+                    background: rgba(59, 166, 217, 0.35);
+                    color: #F8FBFF;
+                    border: none;
+                    border-radius: 14px;
+                    font-size: 12px;
+                    font-weight: 600;
+                }
+                #CollapseButton:hover {
+                    background: rgba(59, 166, 217, 0.6);
+                }
+                #CollapsedStatus {
+                    color: #10B981;
+                    font-size: 11px;
+                    font-weight: 600;
+                    margin-left: 8px;
                 }
             """
 
@@ -879,6 +921,58 @@ def _build_main_entry_window():
                 self._asr_client.stop_recording()
             self._asr_client.disconnect()
             super().closeEvent(event)
+
+        def _toggle_collapse(self) -> None:
+            """切换折叠状态"""
+            # 任务执行中不允许折叠
+            if self._state == CardState.RUNNING:
+                self.hint_label.setText("任务执行中，无法折叠")
+                return
+
+            if self._collapsed:
+                # 展开
+                self._collapsed = False
+                self.collapse_button.setText("▼")
+                self.collapsible_content.setVisible(True)
+                self.collapsed_status.setVisible(False)
+                # 动画展开
+                self._animate_height(self._collapsed_height, self._full_height)
+            else:
+                # 折叠
+                self._collapsed = True
+                self.collapse_button.setText("▶")
+                # 显示折叠时的状态标签
+                self.collapsed_status.setVisible(True)
+                self.collapsed_status.setText(self.hint_label.text())
+                # 动画折叠
+                self._animate_height(self._full_height, self._collapsed_height)
+                # 折叠后隐藏内容
+                self.collapsible_content.setVisible(False)
+
+        def _animate_height(self, from_height: int, to_height: int) -> None:
+            """高度动画"""
+            animation = QtCore.QPropertyAnimation(self, b"size", self)
+            animation.setDuration(200)
+            animation.setStartValue(QtCore.QSize(self.width(), from_height))
+            animation.setEndValue(QtCore.QSize(self.width(), to_height))
+            animation.setEasingCurve(QtCore.QEasingCurve.OutCubic)
+            animation.start(QtCore.QAbstractAnimation.DeleteWhenStopped)
+
+            # 同时移动位置（保持右下角对齐）
+            screen = QtGui.QGuiApplication.primaryScreen()
+            if screen:
+                geo = screen.availableGeometry()
+                # 计算新位置（右下角）
+                new_y = geo.y() + geo.height() - to_height - 26
+                pos_animation = QtCore.QPropertyAnimation(self, b"pos", self)
+                pos_animation.setDuration(200)
+                pos_animation.setStartValue(self.pos())
+                pos_animation.setEndValue(QtCore.QPoint(
+                    geo.x() + geo.width() - self.width() - 22,
+                    new_y
+                ))
+                pos_animation.setEasingCurve(QtCore.QEasingCurve.OutCubic)
+                pos_animation.start(QtCore.QAbstractAnimation.DeleteWhenStopped)
 
         def _safe_close(self) -> None:
             """安全关闭窗口（通过信号调用）"""

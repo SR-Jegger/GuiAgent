@@ -198,7 +198,7 @@
       "id": "send_fake_target",
       "description": "向平台发送虚假目标",
       "aliases": ["发送假目标", "虚假目标", "模拟目标"],
-      "keywords": ["发送", "虚假", "目标", "模拟"],
+      "keywords": ["虚假", "模拟"],
       "parameters": [ 
         {
           "name": "platform_id",
@@ -216,6 +216,56 @@
         "在弹出的界面点击请选择虚假目标示例",
         "点击选择下拉菜单中的第一个选项",
         "仅执行:点击发送按钮"
+      ],
+      "enabled": true
+    },
+    {
+      "id": "send_region_target",
+      "description": "发送区域目标",
+      "aliases": ["发送区域目标", "区域目标", "模拟区域目标"],
+      "keywords": ["发送", "区域", "目标", "模拟"],
+      "parameters": [ ],
+      "sub_steps": [
+        "打开指控命令菜单"
+      ],
+      "enabled": true
+    },
+    {
+      "id": "send_fake_target_with_coords",
+      "description": "向平台发送虚假目标（带坐标）",
+      "aliases": ["发送虚假目标带坐标", "发送假目标坐标", "虚假目标坐标"],
+      "keywords": ["虚假", "目标", "坐标", "经度", "纬度"],
+      "parameters": [
+        {
+          "name": "platform_id",
+          "description": "平台编号（整数）",
+          "extract_pattern": "(\\d+)平台|向(\\d+)平台",
+          "required": true,
+          "examples": ["201", "206", "301"]
+        },
+        {
+          "name": "longitude",
+          "description": "经度（小数）",
+          "extract_pattern": "经度([\\d.]+)",
+          "required": true,
+          "examples": ["75.0871", "120.5", "90.0"]
+        },
+        {
+          "name": "latitude",
+          "description": "纬度（小数）",
+          "extract_pattern": "纬度([\\d.]+)",
+          "required": true,
+          "examples": ["24.6166", "30.5", "45.0"]
+        }
+      ],
+      "sub_steps": [
+        "单击打开谷歌浏览器图标",
+        "输入http://localhost:3000/，进入无人作战指挥系统页面",
+        "右键点击{{platform_id}}平台卡片",
+        "在弹出的菜单栏中选择虚假目标发送选项",
+        "在弹出的界面输入经度{{longitude}}",
+        "输入纬度{{latitude}}",
+        "点击发送按钮"
       ],
       "enabled": true
     }

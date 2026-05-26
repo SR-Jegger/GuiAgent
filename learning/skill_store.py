@@ -5,28 +5,48 @@ Provides:
 - CRUD operations for skills
 - Pattern matching queries
 - Migration from JSON
+- Icon-based coordinate resolution (Phase 1)
 """
 
 import sqlite3
 import json
 import os
 import re
+import logging
 from datetime import datetime
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Tuple
+
+# Import icon matcher for image-based coordinate resolution
+try:
+    from learning.icon_matcher import IconMatcher, IconData, resolve_coordinate_with_icon
+    ICON_MATCHING_AVAILABLE = True
+except ImportError:
+    ICON_MATCHING_AVAILABLE = False
+    print("[SkillStore] Icon matching not available (cv2 not installed)")
+
+logger = logging.getLogger(__name__)
 
 
 class SkillStore:
     """SQLite storage for learned skills."""
 
-    def __init__(self, db_path: str = "data/skills.db"):
+    def __init__(self, db_path: str = "data/skills.db", screenshots_dir: str = "data/screenshots"):
         """
         Initialize the skill store.
 
         Args:
             db_path: Path to SQLite database file
+            screenshots_dir: Directory for skill icon screenshots
         """
         self.db_path = db_path
+        self.screenshots_dir = screenshots_dir
         self._init_db()
+
+        # Initialize icon matcher if available
+        self.icon_matcher = None
+        if ICON_MATCHING_AVAILABLE:
+            self.icon_matcher = IconMatcher(screenshots_dir=screenshots_dir)
+            logger.info(f"[SkillStore] Icon matcher initialized with {screenshots_dir}")
 
     def _init_db(self):
         """Initialize database and create tables."""
@@ -47,6 +67,7 @@ class SkillStore:
                 app_context TEXT,
                 actions TEXT,
                 parameters TEXT,
+                icon_data TEXT,
                 confidence REAL,
                 enabled INTEGER DEFAULT 1,
                 created_at TEXT,
@@ -61,6 +82,16 @@ class SkillStore:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_cluster_id ON skills(cluster_id)")
 
         conn.commit()
+
+        # Migration: Add icon_data column if not exists (Phase 1)
+        try:
+            cursor.execute("SELECT icon_data FROM skills LIMIT 1")
+        except sqlite3.OperationalError:
+            # Column doesn't exist, add it
+            cursor.execute("ALTER TABLE skills ADD COLUMN icon_data TEXT")
+            conn.commit()
+            logger.info("[SkillStore] Added icon_data column (migration)")
+
         conn.close()
         print(f"[SkillStore] Database initialized: {self.db_path}")
 
@@ -86,8 +117,8 @@ class SkillStore:
                 INSERT OR REPLACE INTO skills (
                     id, name, description, source, cluster_id, cluster_type,
                     trigger_patterns, app_context, actions, parameters,
-                    confidence, enabled, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    confidence, enabled, created_at, updated_at, icon_data
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 skill.get("id"),
                 skill.get("name"),
@@ -102,7 +133,8 @@ class SkillStore:
                 skill.get("confidence", 0.5),
                 int(skill.get("enabled", True)),
                 skill.get("created_at", datetime.now().isoformat()),
-                datetime.now().isoformat()
+                datetime.now().isoformat(),
+                json.dumps(skill.get("icon_data")) if skill.get("icon_data") else None
             ))
 
             conn.commit()
@@ -284,6 +316,137 @@ class SkillStore:
             print(f"[SkillStore] Error updating skill: {e}")
             return False
 
+    def resolve_action_coordinate(
+        self,
+        skill: Dict,
+        screenshot: any,
+        screen_size: Optional[Tuple[int, int]] = None,
+        action_index: int = 0,
+        current_dpi: Optional[int] = None,
+        use_adaptive: bool = True
+    ) -> Optional[Tuple[int, int]]:
+        """
+        Resolve action coordinate using icon matching with fallback.
+
+        Phase 2: 支持自适应匹配（方案A+B）+ 自动获取屏幕分辨率
+
+        Priority:
+        1. Adaptive icon matching (if icon_data available with resolution metadata)
+        2. Standard icon matching (if icon_data available without metadata)
+        3. Fallback coordinate (from skill actions)
+        4. Recorded coordinate (from skill actions)
+
+        Args:
+            skill: Skill dict with icon_data and actions
+            screenshot: Current screenshot (numpy array or path)
+            screen_size: Screen size (width, height). If None, auto-detect.
+            action_index: Index of action to resolve (default 0, first action)
+            current_dpi: Current screen DPI. If None, auto-detect.
+            use_adaptive: Use adaptive scaling if resolution metadata available
+
+        Returns:
+            Coordinate (x, y) in pixel format, or None if cannot resolve
+        """
+        # Import auto-detection functions
+        from learning.icon_matcher import get_screen_resolution, get_screen_dpi
+
+        # Auto-detect screen resolution if not provided
+        if screen_size is None:
+            screen_size = get_screen_resolution()
+
+        # Auto-detect DPI if not provided
+        if current_dpi is None:
+            current_dpi = get_screen_dpi()
+
+        # Get actions
+        actions = skill.get("actions", [])
+        if not actions or action_index >= len(actions):
+            logger.warning(f"No action at index {action_index}")
+            return None
+
+        action = actions[action_index]
+
+        # Try icon matching first
+        icon_data_dict = skill.get("icon_data")
+        if icon_data_dict and self.icon_matcher:
+            icon_data = IconData.from_dict(icon_data_dict)
+
+            if icon_data.has_icon():
+                coord = resolve_coordinate_with_icon(
+                    self.icon_matcher,
+                    icon_data,
+                    screenshot,
+                    screen_size,
+                    current_dpi=current_dpi,
+                    use_normalized=False,  # Return pixel coordinates for execution
+                    use_adaptive=use_adaptive
+                )
+
+                if coord:
+                    logger.info(f"[SkillStore] Coordinate resolved via icon matching: {coord}")
+                    return coord
+
+                logger.warning("[SkillStore] Icon matching failed, falling back to recorded coordinate")
+
+        # Fallback to recorded coordinate in action
+        coord_expr = action.get("coordinate")
+        if coord_expr:
+            # Handle different coordinate formats
+            if isinstance(coord_expr, (list, tuple)) and len(coord_expr) >= 2:
+                # Normalize if needed
+                x, y = int(coord_expr[0]), int(coord_expr[1])
+
+                # Check if normalized (0-1000 range)
+                if x <= 1000 and y <= 1000:
+                    # Denormalize to pixel coordinates
+                    if self.icon_matcher:
+                        return self.icon_matcher.denormalize_coordinate(x, y, screen_size)
+                    else:
+                        # Simple denormalization without icon_matcher
+                        width, height = screen_size
+                        return (int(x * width / 1000), int(y * height / 1000))
+
+                return (x, y)
+
+        logger.warning(f"[SkillStore] No coordinate available for action {action_index}")
+        return None
+
+    def update_icon_data(
+        self,
+        skill_id: str,
+        icon_data: Dict
+    ) -> bool:
+        """
+        Update skill's icon_data field.
+
+        Args:
+            skill_id: Skill ID
+            icon_data: Icon data dict with icon_path, threshold, etc.
+
+        Returns:
+            True if updated successfully
+        """
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+
+            cursor.execute(
+                "UPDATE skills SET icon_data = ?, updated_at = ? WHERE id = ?",
+                (json.dumps(icon_data), datetime.now().isoformat(), skill_id)
+            )
+
+            success = cursor.rowcount > 0
+            conn.commit()
+            conn.close()
+
+            if success:
+                logger.info(f"[SkillStore] Updated icon_data for skill: {skill_id}")
+
+            return success
+        except Exception as e:
+            logger.error(f"[SkillStore] Error updating icon_data: {e}")
+            return False
+
     def _row_to_dict(self, row: tuple) -> Dict:
         """
         Convert database row to skill dict.
@@ -294,9 +457,34 @@ class SkillStore:
         Returns:
             Skill dict
         """
+        # SQLite ALTER TABLE adds new columns at the END, not in CREATE TABLE order
+        # Actual order: id, name, desc, source, cluster_id, cluster_type,
+        #                patterns, app_ctx, actions, params, confidence, enabled, created, updated, icon_data
+        # icon_data is at index 14 (last column)
+
+        row_len = len(row)
+
+        # Parse parameters (row[9])
         parameters = None
         if row[9]:
-            parameters = json.loads(row[9])
+            try:
+                parameters = json.loads(row[9])
+            except (json.JSONDecodeError, TypeError):
+                parameters = None
+
+        # Parse icon_data (row[14] - last column added via ALTER TABLE)
+        icon_data = None
+        if row_len == 15 and row[14]:  # New schema with icon_data at end
+            try:
+                icon_data = json.loads(row[14])
+            except json.JSONDecodeError:
+                icon_data = None
+
+        # Fixed indices (icon_data doesn't affect other columns' positions)
+        confidence_idx = 10
+        enabled_idx = 11
+        created_idx = 12
+        updated_idx = 13
 
         # Parse patterns safely
         patterns = []
@@ -306,16 +494,14 @@ class SkillStore:
             except json.JSONDecodeError:
                 patterns = []
 
-        # Parse app_context safely - handle both old string format and new JSON array
+        # Parse app_context safely
         app_context = []
         if row[7]:
             try:
                 app_context = json.loads(row[7])
-                # If it's a string, convert to list
                 if isinstance(app_context, str):
                     app_context = [app_context] if app_context else []
             except json.JSONDecodeError:
-                # Old format: single string
                 app_context = [row[7]] if row[7] else []
 
         # Parse actions safely
@@ -339,10 +525,11 @@ class SkillStore:
             },
             "actions": actions,
             "parameters": parameters,
-            "confidence": row[10],
-            "enabled": bool(row[11]),
-            "created_at": row[12],
-            "updated_at": row[13]
+            "icon_data": icon_data,
+            "confidence": row[confidence_idx],
+            "enabled": bool(row[enabled_idx]),
+            "created_at": row[created_idx],
+            "updated_at": row[updated_idx]
         }
 
     def migrate_from_json(self, json_path: str = "rules/learned_skills.json") -> int:

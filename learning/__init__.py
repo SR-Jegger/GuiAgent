@@ -9,6 +9,7 @@ This module provides:
 - SkillStore: SQLite-based storage for learned skills
 - LLMReviewer: Automatic skill candidate review using LLM
 - Similarity utilities: Compare operations for clustering
+- IconMatcher: Image-based skill matching with resolution awareness (Phase 2)
 """
 
 from learning.operation_logger import OperationLogger
@@ -19,6 +20,15 @@ from learning.similarity import (
     is_same_operation,
     instruction_similarity,
     semantic_similarity,
+)
+
+# Icon matching (Phase 2 A+B)
+from learning.icon_matcher import (
+    IconMatcher,
+    IconData,
+    get_screen_resolution,
+    get_screen_dpi,
+    resolve_coordinate_with_icon,
 )
 
 # LLM-enhanced components
@@ -36,6 +46,12 @@ __all__ = [
     "is_same_operation",
     "instruction_similarity",
     "semantic_similarity",
+    # Icon matching (Phase 2)
+    "IconMatcher",
+    "IconData",
+    "get_screen_resolution",
+    "get_screen_dpi",
+    "resolve_coordinate_with_icon",
     # LLM-enhanced components
     "LLMClient",
     "create_llm_client",

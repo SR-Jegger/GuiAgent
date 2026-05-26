@@ -1,0 +1,24 @@
+{
+    "name": "Command Chain Demo",
+    "description": "示例：按顺序执行多个 GUI 自动化指令",
+    "on_failure": "stop",
+    "max_steps": 50,
+    "max_retries": 3,
+    "commands": [
+        {
+            "label": "虚假目标",
+            "instruction": "向201平台发送虚假目标，经度75.0871，纬度24.6166",
+            "wait_after": 3
+        },
+        {
+            "label": "瞄准目标",
+            "instruction": "点击201平台，进行瞄准目标确认",
+            "wait_after": 3
+        },
+        {
+            "label": "跟踪目标",
+            "instruction": "点击201平台，进行跟踪目标确认",
+            "wait_after": 5
+        }
+    ]
+}

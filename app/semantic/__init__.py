@@ -6,6 +6,7 @@
 from app.semantic.semantic_matcher import (
     SemanticMatcher,
     RuleBasedMatcher,
+    HybridMatcher,
     MatchResult,
     load_intent_mappings,
     chinese_to_number,
@@ -14,6 +15,7 @@ from app.semantic.semantic_matcher import (
 __all__ = [
     "SemanticMatcher",
     "RuleBasedMatcher",
+    "HybridMatcher",
     "MatchResult",
     "load_intent_mappings",
     "chinese_to_number",

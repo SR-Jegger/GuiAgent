@@ -553,3 +553,158 @@ class RuleBasedMatcher:
         elif missing_params:
             return f"{desc} [缺失{missing_params[0]}]"
         return desc
+
+
+# ============================================================================
+# 混合匹配器（规则 + LLM 结合）
+# ============================================================================
+
+class HybridMatcher:
+    """混合匹配器：结合规则匹配和 LLM 匹配
+
+    策略：
+    1. 先用规则匹配器快速匹配（RuleBasedMatcher）
+    2. 如果规则匹配置信度 >= 0.8，直接返回（高置信度）
+    3. 如果规则匹配置信度 < 0.8，调用 LLM 匹配器（SemanticMatcher）
+    4. LLM 结果必须通过规则验证：置信度 > 0.4 才算有效
+    5. 最终返回两者中置信度更高的结果
+
+    优点：
+    - 高置信度匹配快速返回（无 LLM 调用延迟）
+    - LLM 匹配有规则验证兜底，避免误判
+    - 兼顾速度和准确性
+    """
+
+    # 规则匹配置信度阈值（>= 此值直接返回，不调用 LLM）
+    RULE_HIGH_CONFIDENCE_THRESHOLD = 0.8
+
+    # 规则验证阈值（LLM 结果必须通过此验证才有效）
+    RULE_VALIDATION_THRESHOLD = 0.4
+
+    def __init__(
+        self,
+        llm_client=None,
+        model_config: dict = None,
+        config_path: str = "data/intent_mappings.json"
+    ):
+        """
+        Args:
+            llm_client: LLM 客户端（用于 SemanticMatcher）
+            model_config: 模型配置
+            config_path: 意图映射配置文件路径
+        """
+        self.rule_matcher = RuleBasedMatcher(config_path)
+        self.llm_matcher = SemanticMatcher(llm_client, model_config, config_path)
+
+    async def match(self, user_text: str) -> MatchResult:
+        """
+        混合匹配策略
+
+        Args:
+            user_text: ASR 转写文本
+
+        Returns:
+            MatchResult: 最佳匹配结果
+        """
+        # 1. 先用规则匹配器快速匹配
+        rule_result = self.rule_matcher.match(user_text)
+
+        print(f"[HybridMatcher] 规则匹配置信度: {rule_result.confidence:.2f}")
+
+        # 2. 规则匹配置信度 >= 0.8，直接返回（高置信度，无需 LLM）
+        if rule_result.confidence >= self.RULE_HIGH_CONFIDENCE_THRESHOLD:
+            print(f"[HybridMatcher] 规则高置信度匹配，直接返回: {rule_result.matched_id}")
+            return rule_result
+
+        # 3. 规则匹配置信度低，调用 LLM 匹配器
+        print(f"[HybridMatcher] 规则置信度低，调用 LLM 匹配...")
+        llm_result = await self.llm_matcher.match(user_text)
+
+        print(f"[HybridMatcher] LLM 匹配结果: {llm_result.matched_id}, 置信度: {llm_result.confidence:.2f}")
+
+        # 4. LLM 未匹配，返回规则结果
+        if not llm_result.is_matched:
+            print(f"[HybridMatcher] LLM 未匹配，返回规则结果")
+            return rule_result
+
+        # 5. LLM 匹配成功，需要规则验证
+        # 用规则匹配器验证 LLM 的 matched_id
+        validation_result = self._validate_llm_result(llm_result.matched_id, user_text)
+
+        print(f"[HybridMatcher] 规则验证置信度: {validation_result.confidence:.2f}")
+
+        # 6. 规则验证置信度 > 0.4，LLM 结果有效
+        if validation_result.confidence > self.RULE_VALIDATION_THRESHOLD:
+            print(f"[HybridMatcher] LLM 结果通过规则验证，返回 LLM 结果")
+            return llm_result
+
+        # 7. 规则验证失败，返回规则匹配结果（或无匹配）
+        if rule_result.is_matched:
+            print(f"[HybridMatcher] LLM 验证失败，返回规则匹配结果")
+            return rule_result
+        else:
+            print(f"[HybridMatcher] LLM 验证失败，规则未匹配，返回无匹配")
+            return MatchResult(
+                matched_id=None,
+                confidence=0.0,
+                corrected_intent=user_text,
+                instruction=user_text,
+                original_text=user_text,
+                is_matched=False,
+            )
+
+    def _validate_llm_result(self, matched_id: str, user_text: str) -> MatchResult:
+        """
+        用规则匹配器验证 LLM 的匹配结果
+
+        检查 LLM 返回的 matched_id 是否与规则匹配器对该 ID 的置信度一致
+
+        Args:
+            matched_id: LLM 返回的匹配 ID
+            user_text: 原始用户文本
+
+        Returns:
+            规则匹配器对该 ID 的验证结果
+        """
+        # 找到 LLM 匹配的 mapping
+        mapping = self.rule_matcher._mappings.get(matched_id)
+
+        if not mapping:
+            # LLM 匹配的 ID 不存在，验证失败
+            return MatchResult(
+                matched_id=None,
+                confidence=0.0,
+                corrected_intent=user_text,
+                instruction=user_text,
+                original_text=user_text,
+                is_matched=False,
+            )
+
+        # 计算规则匹配置信度（只针对该 mapping）
+        user_text_lower = user_text.lower()
+        score = 0.0
+
+        # 检查别名匹配
+        for alias in mapping.get("aliases", []):
+            if alias.lower() in user_text_lower:
+                score += 0.8
+
+        # 检查关键词匹配
+        matched_keywords = 0
+        for keyword in mapping.get("keywords", []):
+            if keyword.lower() in user_text_lower:
+                matched_keywords += 1
+
+        if matched_keywords > 0:
+            keyword_score = min(0.6, matched_keywords * 0.2)
+            score += keyword_score
+
+        # 返回验证结果
+        return MatchResult(
+            matched_id=matched_id if score > 0 else None,
+            confidence=score,
+            corrected_intent=mapping.get("description", ""),
+            instruction=mapping.get("description", ""),
+            original_text=user_text,
+            is_matched=score > 0,
+        )

@@ -26,7 +26,7 @@ from app.popup.task_progress import (
 )
 from app.popup.task_progress_popup import TaskProgressPopup
 from app.popup.main_entry_card import MainEntryCard, CardState
-from app.semantic.semantic_matcher import SemanticMatcher, RuleBasedMatcher, MatchResult
+from app.semantic.semantic_matcher import SemanticMatcher, RuleBasedMatcher, HybridMatcher, MatchResult
 
 
 class TaskStatus(str, Enum):
@@ -52,6 +52,10 @@ class Task:
     rules_dir: str = "./rules"
     use_intent_mapping: bool = False  # 是否启用意图映射
     intent_mapping_config_path: Optional[str] = None  # 映射配置路径
+
+    # 语义匹配结果（从 semantic_matcher 传递）
+    semantic_matched_id: Optional[str] = None
+    semantic_parameters: Optional[Dict] = None
 
     status: TaskStatus = TaskStatus.PENDING
     created_at: float = field(default_factory=time.time)
@@ -117,9 +121,10 @@ class AgentApplicationService:
         # 事件循环引用（用于跨线程调用）
         self._loop: Optional[asyncio.AbstractEventLoop] = None
 
-        # 语义匹配器（可选：规则匹配或LLM匹配）
-        self._semantic_matcher: Optional[SemanticMatcher | RuleBasedMatcher] = None
-        self._use_llm_matcher: bool = True  # True: LLM匹配, False: 规则匹配
+        # 语义匹配器（混合匹配：规则 + LLM）
+        self._semantic_matcher: Optional[SemanticMatcher | RuleBasedMatcher | HybridMatcher] = None
+        # 匹配模式: "hybrid" (默认), "llm", "rule"
+        self._matcher_mode: str = "hybrid"
 
         # 当前语义匹配结果（用于传递给 agent）
         self._current_semantic_result: Optional[MatchResult] = None
@@ -135,16 +140,22 @@ class AgentApplicationService:
 
         # 初始化语义匹配器
         if self.use_semantic_match:
-            if self._use_llm_matcher:
-                # 使用 LLM 匹配（需要 model_config）
-                model_name = "gemma4_e4b"  # 可以改为配置项
+            if self._matcher_mode == "hybrid":
+                # 使用混合匹配（规则 + LLM 结合）【推荐】
+                model_name = "gemma4_e4b"
+                model_cfg = self._model_config.get("models", {}).get(model_name, {})
+                self._semantic_matcher = HybridMatcher(model_config=model_cfg)
+                print(f"[AgentApplicationService] Semantic matcher initialized (Hybrid: Rule + LLM)")
+            elif self._matcher_mode == "llm":
+                # 仅使用 LLM 匹配
+                model_name = "gemma4_e4b"
                 model_cfg = self._model_config.get("models", {}).get(model_name, {})
                 self._semantic_matcher = SemanticMatcher(model_config=model_cfg)
                 print(f"[AgentApplicationService] Semantic matcher initialized (LLM: {model_name})")
             else:
-                # 使用规则匹配（快速、无LLM调用）
+                # 仅使用规则匹配（快速、无LLM调用）
                 self._semantic_matcher = RuleBasedMatcher()
-                print("[AgentApplicationService] Semantic matcher initialized (Rule-based!)")
+                print("[AgentApplicationService] Semantic matcher initialized (Rule-based)")
 
         # 启动主入口卡片
         if self.show_entry_card:
@@ -213,11 +224,12 @@ class AgentApplicationService:
 
         # 语义匹配处理
         if self._semantic_matcher:
-            # LLM 匹配器是异步的，规则匹配器是同步的
-            if isinstance(self._semantic_matcher, SemanticMatcher):
-                match_result = await self._semantic_matcher.match(instruction)
-            else:
+            # HybridMatcher 和 SemanticMatcher 是异步的，RuleBasedMatcher 是同步的
+            if isinstance(self._semantic_matcher, RuleBasedMatcher):
                 match_result = self._semantic_matcher.match(instruction)
+            else:
+                # HybridMatcher 或 SemanticMatcher（异步）
+                match_result = await self._semantic_matcher.match(instruction)
             if match_result.is_matched:
                 print(
                     f"[语义匹配] 原文本: '{instruction}' → "
@@ -257,6 +269,8 @@ class AgentApplicationService:
         rules_dir: str = "./rules",
         use_intent_mapping: bool = False,
         intent_mapping_config_path: Optional[str] = None,
+        semantic_matched_id: Optional[str] = None,
+        semantic_parameters: Optional[Dict] = None,
     ) -> str:
         """Submit a new task for async execution."""
         task = Task.create(
@@ -268,6 +282,8 @@ class AgentApplicationService:
             rules_dir=rules_dir,
             use_intent_mapping=use_intent_mapping,
             intent_mapping_config_path=intent_mapping_config_path,
+            semantic_matched_id=semantic_matched_id,
+            semantic_parameters=semantic_parameters,
         )
         task.progress = build_progress_snapshot(
             task_id=task.task_id,
@@ -340,6 +356,10 @@ class AgentApplicationService:
         add_info: Optional[str] = None,
         rules_dir: str = "./rules",
         timeout: Optional[float] = None,
+        use_intent_mapping: bool = False,
+        intent_mapping_config_path: Optional[str] = None,
+        semantic_matched_id: Optional[str] = None,
+        semantic_parameters: Optional[Dict] = None,
     ) -> Dict:
         """Run a single task synchronously."""
         task_id = await self.submit_task(
@@ -349,6 +369,10 @@ class AgentApplicationService:
             max_retries=max_retries,
             add_info=add_info,
             rules_dir=rules_dir,
+            use_intent_mapping=use_intent_mapping,
+            intent_mapping_config_path=intent_mapping_config_path,
+            semantic_matched_id=semantic_matched_id,
+            semantic_parameters=semantic_parameters,
         )
 
         start_time = time.time()
@@ -401,10 +425,10 @@ class AgentApplicationService:
         # 不再创建独立弹窗，使用主入口卡片
 
         try:
-            # 获取语义匹配结果
-            semantic_matched_id = None
-            semantic_parameters = None
-            if self._current_semantic_result:
+            # 获取语义匹配结果：优先从 task 读取，其次从全局状态（兼容卡片输入）
+            semantic_matched_id = task.semantic_matched_id
+            semantic_parameters = task.semantic_parameters
+            if not semantic_matched_id and self._current_semantic_result:
                 semantic_matched_id = self._current_semantic_result.matched_id
                 semantic_parameters = self._current_semantic_result.parameters
 

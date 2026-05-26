@@ -28,6 +28,89 @@ def get_ocr_locator() -> OCRLocator:
     return _ocr_locator_instance
 
 
+def resolve_icon_coordinates(
+    rule_result: dict,
+    screenshot_array: any,
+    screen_size: tuple = None
+) -> list:
+    """
+    使用图像匹配解析技能的坐标
+
+    Args:
+        rule_result: 规则匹配结果（包含技能信息）
+        screenshot_array: 当前截图
+        screen_size: 屏幕分辨率
+
+    Returns:
+        解析后的 actions（坐标已通过图像匹配更新）
+    """
+    try:
+        from learning.skill_store import SkillStore
+        from learning.icon_matcher import get_screen_resolution
+
+        # 获取完整技能信息（包含 icon_data）
+        store = SkillStore()
+        skill_id = rule_result.get("rule_id")
+        skill = store.get(skill_id)
+
+        if not skill:
+            print(f"[FAST_PATH] 技能不存在: {skill_id}")
+            return rule_result.get("actions", [])
+
+        icon_data = skill.get("icon_data")
+        if not icon_data:
+            print(f"[FAST_PATH] 技能无 icon_data，使用原始坐标")
+            return rule_result.get("actions", [])
+
+        print(f"[FAST_PATH] 检测到 icon_data，进行图像匹配...")
+
+        # 自动获取屏幕分辨率
+        if screen_size is None:
+            screen_size = get_screen_resolution()
+
+        # 调用图像匹配解析坐标
+        actions = skill.get("actions", [])
+        resolved_actions = []
+
+        for i, action in enumerate(actions):
+            action_type = action.get("type", "")
+
+            # 只处理点击类型动作
+            if action_type in ("click", "left_click", "right_click", "middle_click", "double_click"):
+                coord = store.resolve_action_coordinate(
+                    skill,
+                    screenshot_array,
+                    screen_size,
+                    action_index=i,
+                    use_adaptive=True
+                )
+
+                if coord:
+                    # 图像匹配成功，更新坐标
+                    # 注意：resolve_action_coordinate 返回的是像素坐标，不需要归一化标记
+                    print(f"[FAST_PATH] 图像匹配成功: {coord} (像素坐标)")
+                    resolved_action = dict(action)
+                    resolved_action["coordinate"] = list(coord)
+                    # 删除归一化标记，因为图像匹配返回的是像素坐标
+                    resolved_action.pop("coordinate_normalized", None)
+                    resolved_actions.append(resolved_action)
+                else:
+                    # 图像匹配失败，使用 fallback
+                    print(f"[FAST_PATH] 图像匹配失败，使用原始坐标")
+                    resolved_actions.append(action)
+            else:
+                # 非点击动作，直接保留
+                resolved_actions.append(action)
+
+        return resolved_actions
+
+    except Exception as e:
+        print(f"[FAST_PATH] 图像匹配错误: {e}")
+        import traceback
+        traceback.print_exc()
+        return rule_result.get("actions", [])
+
+
 def fast_path_node(state: AgentState) -> AgentState:
     """
     Fast Path rule matching node.
@@ -95,6 +178,41 @@ def fast_path_node(state: AgentState) -> AgentState:
         rule_actions = result.get("actions", [])
         rule_source = result.get("source", "manual")
         rule_confidence = result.get("confidence", 1.0)
+
+        # =====================================================
+        # Step 1: 图像匹配（如果技能有 icon_data）
+        # =====================================================
+        # 检查是否有 icon_data（需要截图进行匹配）
+        has_icon_data = False
+        try:
+            from learning.skill_store import SkillStore
+            store = SkillStore()
+            skill = store.get(result.get("rule_id"))
+            if skill and skill.get("icon_data"):
+                has_icon_data = True
+        except Exception:
+            pass
+
+        if has_icon_data:
+            print(f"[FAST_PATH] 技能包含 icon_data，准备截图进行图像匹配...")
+
+            # 等待界面加载
+            wait_time = state.get("ocr_wait_time", 1.0)
+            time.sleep(wait_time)
+
+            # 截图
+            ocr_locator = get_ocr_locator()
+            screenshot_array = ocr_locator.capture_screenshot()
+
+            if screenshot_array is None:
+                print(f"[FAST_PATH] 截图失败，使用原始坐标")
+            else:
+                # 调用图像匹配
+                rule_actions = resolve_icon_coordinates(result, screenshot_array)
+
+        # =====================================================
+        # Step 2: OCR 占位符解析（如果需要）
+        # =====================================================
 
         # 检测是否需要占位符解析
         if needs_resolution(rule_actions):
