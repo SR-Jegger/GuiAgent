@@ -29,6 +29,8 @@ from learning.icon_matcher import (
     get_screen_resolution,
     get_screen_dpi,
     resolve_coordinate_with_icon,
+    apply_anchor,
+    ANCHOR_MAP,
 )
 
 # LLM-enhanced components
@@ -52,6 +54,8 @@ __all__ = [
     "get_screen_resolution",
     "get_screen_dpi",
     "resolve_coordinate_with_icon",
+    "apply_anchor",
+    "ANCHOR_MAP",
     # LLM-enhanced components
     "LLMClient",
     "create_llm_client",

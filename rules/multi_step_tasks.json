@@ -43,6 +43,26 @@
         }
       ],
       "enabled": false
+    },
+    {
+      "id": "demo_browser_desktop_mix_rule",
+      "name": "演示:浏览器+桌面混合 skill",
+      "description": "同一个 skill 的 actions 列表中混合 browser_* 与桌面动作。Playwright 部分(导航/填充/点击/等待)作用于 DOM,桌面部分(双击/输入)作用于操作系统。正则捕获支持 {0} 与 {{match_group_1}} 两种占位符。",
+      "trigger": {
+        "patterns": [
+          ".*混合搜索 ([\\w\\u4e00-\\u9fa5]+).*"
+        ]
+      },
+      "actions": [
+        {"action": "browser_navigate", "url": "http://localhost:3000/"},
+        {"action": "browser_wait_idle"},
+        {"action": "browser_fill", "selector": "#search-box", "value": "{0}"},
+        {"action": "browser_click", "selector": "#search-btn"},
+        {"action": "browser_wait_selector", "selector": ".results", "state": "visible"},
+        {"type": "double_click", "coordinate": [500, 300], "coordinate_normalized": true},
+        {"type": "type", "text": "搜索完成,关键词为 {{match_group_1}}"}
+      ],
+      "enabled": true
     }
   ]
 }

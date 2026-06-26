@@ -1,7 +1,7 @@
 """Preset Commands Panel - Simple and robust implementation.
 
 Design: Neo-Terminal style with solid colors.
-Loads preset commands from data/intent_mappings.json.
+Loads preset commands from presets.json (pure list of instruction strings).
 """
 
 from __future__ import annotations
@@ -12,12 +12,10 @@ from dataclasses import dataclass
 from typing import Callable, List, Optional, Tuple
 
 
-# Path to intent mappings config (project root / data / intent_mappings.json)
+# Path to presets config (alongside this module: app/popup/presets.json)
 _current_file = os.path.abspath(__file__)
 _popup_dir = os.path.dirname(_current_file)      # app/popup
-_app_dir = os.path.dirname(_popup_dir)           # app
-_project_root = os.path.dirname(_app_dir)        # project root
-INTENT_MAPPINGS_PATH = os.path.join(_project_root, "data", "intent_mappings.json")
+PRESETS_PATH = os.path.join(_popup_dir, "presets.json")
 
 
 @dataclass
@@ -30,36 +28,43 @@ class PresetCommand:
     icon: str = ""
 
 
-def load_presets_from_intent_mappings() -> List[PresetCommand]:
-    """Load preset commands from intent_mappings.json."""
-    if not os.path.exists(INTENT_MAPPINGS_PATH):
-        print(f"[PresetCommands] Config file not found: {INTENT_MAPPINGS_PATH}")
+def load_presets() -> List[PresetCommand]:
+    """Load preset commands from presets.json.
+
+    File format::
+
+        {"presets": ["指令文本1", "指令文本2", ...]}
+
+    Each string is used as both the card name and the instruction text
+    that gets filled into the input box when the card is clicked.
+    """
+    if not os.path.exists(PRESETS_PATH):
+        print(f"[PresetCommands] Config file not found: {PRESETS_PATH}")
         return []
 
     try:
-        with open(INTENT_MAPPINGS_PATH, "r", encoding="utf-8") as f:
+        with open(PRESETS_PATH, "r", encoding="utf-8") as f:
             data = json.load(f)
 
-        presets = []
-        for mapping in data.get("mappings", []):
-            if not mapping.get("enabled", True):
-                continue  # Skip disabled mappings
+        items = data.get("presets", []) if isinstance(data, dict) else data
 
-            # Use first alias as instruction (most natural voice command)
-            aliases = mapping.get("aliases", [])
-            instruction = aliases[0] if aliases else mapping.get("description", "")
-
+        presets: List[PresetCommand] = []
+        for idx, text in enumerate(items):
+            if not isinstance(text, str):
+                continue
+            text = text.strip()
+            if not text:
+                continue
             presets.append(PresetCommand(
-                id=mapping.get("id", ""),
-                name=mapping.get("description", ""),
-                description=aliases[0] if aliases else mapping.get("description", ""),
-                instruction=instruction,
+                id=f"preset_{idx}",
+                name=text,
+                description=text,
+                instruction=text,
                 icon="command",
             ))
-
         return presets
     except Exception as e:
-        print(f"[PresetCommands] Failed to load intent mappings: {e}")
+        print(f"[PresetCommands] Failed to load presets: {e}")
         return []
 
 
@@ -71,7 +76,7 @@ DEFAULT_PRESETS: List[PresetCommand] = [
 
 
 # Load actual presets from config (used by default)
-PRESETS = load_presets_from_intent_mappings() or DEFAULT_PRESETS
+PRESETS = load_presets() or DEFAULT_PRESETS
 
 
 def build_preset_panel():

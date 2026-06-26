@@ -14,6 +14,7 @@ from enum import Enum
 from typing import Any, Dict, List, Optional
 
 from agent_graph import build_agent_graph_simple, run_agent_async
+from utils.browser_manager import BrowserManager
 from app.popup.task_progress import (
     PROGRESS_STATUS_CANCELLED,
     PROGRESS_STATUS_CANCELLING,
@@ -56,6 +57,9 @@ class Task:
     # 语义匹配结果（从 semantic_matcher 传递）
     semantic_matched_id: Optional[str] = None
     semantic_parameters: Optional[Dict] = None
+
+    # 用户提供的图片（base64 data URI 或 HTTP URL）
+    input_images: Optional[list[str]] = None
 
     status: TaskStatus = TaskStatus.PENDING
     created_at: float = field(default_factory=time.time)
@@ -124,10 +128,13 @@ class AgentApplicationService:
         # 语义匹配器（混合匹配：规则 + LLM）
         self._semantic_matcher: Optional[SemanticMatcher | RuleBasedMatcher | HybridMatcher] = None
         # 匹配模式: "hybrid" (默认), "llm", "rule"
-        self._matcher_mode: str = "hybrid"
+        self._matcher_mode: str = "rule" #"hybrid"
 
         # 当前语义匹配结果（用于传递给 agent）
         self._current_semantic_result: Optional[MatchResult] = None
+
+        # 持久化浏览器管理器
+        self._browser_manager: Optional[BrowserManager] = None
 
     async def initialize(self, config_path: str = "nodes/model_config.json") -> None:
         """Initialize service: load config, compile agent graph, start workers."""
@@ -156,6 +163,14 @@ class AgentApplicationService:
                 # 仅使用规则匹配（快速、无LLM调用）
                 self._semantic_matcher = RuleBasedMatcher()
                 print("[AgentApplicationService] Semantic matcher initialized (Rule-based)")
+
+        # 启动持久化浏览器（带 remote debugging port）
+        try:
+            self._browser_manager = BrowserManager(port=9222)
+            self._browser_manager.start(headless=False)
+            print(f"[AgentApplicationService] Browser started with CDP at {self._browser_manager.cdp_endpoint}")
+        except Exception as exc:
+            print(f"[AgentApplicationService] Browser manager start failed ({exc}), tasks can still launch their own browser")
 
         # 启动主入口卡片
         if self.show_entry_card:
@@ -214,13 +229,19 @@ class AgentApplicationService:
         )
 
     async def _submit_from_card(self, instruction: str) -> str:
-        """从卡片提交任务"""
+        """从卡片提交任务（支持嵌入 data:image URI 的图片输入）"""
         if self._current_task_id:
             # 单任务模式：检查是否有正在执行的任务
             task = await self.get_task(self._current_task_id)
             if task and task.status == TaskStatus.RUNNING:
                 print("[AgentApplicationService] 已有任务在执行，忽略新提交")
                 return ""
+
+        # 从文本中提取嵌入的 data:image URI
+        from utils.utils import parse_input_images_from_text
+        instruction, input_images = parse_input_images_from_text(instruction)
+        if input_images:
+            print(f"[AgentApplicationService] 从卡片输入中提取到 {len(input_images)} 张图片")
 
         # 语义匹配处理
         if self._semantic_matcher:
@@ -245,7 +266,7 @@ class AgentApplicationService:
                 print(f"[语义匹配] 无匹配，使用原文本: '{instruction}'")
                 self._current_semantic_result = None
 
-        task_id = await self.submit_task(instruction=instruction)
+        task_id = await self.submit_task(instruction=instruction, input_images=input_images if input_images else None)
         self._current_task_id = task_id
         return task_id
 
@@ -271,6 +292,7 @@ class AgentApplicationService:
         intent_mapping_config_path: Optional[str] = None,
         semantic_matched_id: Optional[str] = None,
         semantic_parameters: Optional[Dict] = None,
+        input_images: Optional[list[str]] = None,
     ) -> str:
         """Submit a new task for async execution."""
         task = Task.create(
@@ -284,6 +306,7 @@ class AgentApplicationService:
             intent_mapping_config_path=intent_mapping_config_path,
             semantic_matched_id=semantic_matched_id,
             semantic_parameters=semantic_parameters,
+            input_images=input_images,
         )
         task.progress = build_progress_snapshot(
             task_id=task.task_id,
@@ -360,6 +383,7 @@ class AgentApplicationService:
         intent_mapping_config_path: Optional[str] = None,
         semantic_matched_id: Optional[str] = None,
         semantic_parameters: Optional[Dict] = None,
+        input_images: Optional[list[str]] = None,
     ) -> Dict:
         """Run a single task synchronously."""
         task_id = await self.submit_task(
@@ -373,6 +397,7 @@ class AgentApplicationService:
             intent_mapping_config_path=intent_mapping_config_path,
             semantic_matched_id=semantic_matched_id,
             semantic_parameters=semantic_parameters,
+            input_images=input_images,
         )
 
         start_time = time.time()
@@ -446,6 +471,8 @@ class AgentApplicationService:
                 intent_mapping_config_path=task.intent_mapping_config_path,
                 semantic_matched_id=semantic_matched_id,  # 语义匹配 ID
                 semantic_parameters=semantic_parameters,  # 语义匹配参数
+                input_images=task.input_images,  # 用户提供的图片
+                cdp_endpoint=self._browser_manager.cdp_endpoint if self._browser_manager else None,
                 progress_callback=lambda state, status=None, message="": self._update_task_progress(
                     task,
                     agent_state=state,
@@ -564,6 +591,11 @@ class AgentApplicationService:
 
     async def shutdown(self) -> None:
         """Shutdown service: cancel pending tasks and stop workers."""
+        # 关闭持久化浏览器
+        if self._browser_manager is not None:
+            self._browser_manager.stop()
+            print("[AgentApplicationService] Browser stopped")
+
         # 关闭主入口卡片
         if self._main_entry_card is not None:
             self._main_entry_card.close()

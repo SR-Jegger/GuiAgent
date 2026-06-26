@@ -8,7 +8,7 @@
 - 执行预定义动作链
 
 使用方法:
-    from rule_matcher import RuleMatcher
+    from learning.rule_matcher import RuleMatcher
 
     matcher = RuleMatcher("./rules")
     result = matcher.match("关闭窗口")
@@ -226,8 +226,13 @@ class RuleMatcher:
         """处理动作链中的变量替换
 
         支持的变量:
-        - {{match_group_1}}, {{match_group_2}}... - 正则捕获组
+        - {{match_group_1}}, {{match_group_2}}... - GuiAgent 风格正则捕获组
+        - {0}, {1}, ... - BrowserAgent 风格正则捕获组(零基索引)
         - {{full_match}} - 完整匹配文本
+
+        两种占位符可在同一 action 中混用,便于直接复用 BrowserAgent 的
+        skills/browser_skills.json 数据(用 {0}{1})和 GuiAgent 既有规则
+        (用 {{match_group_N}})。
         """
         processed = []
 
@@ -239,6 +244,8 @@ class RuleMatcher:
                 text = action_copy["text"]
                 for i, group in enumerate(match_groups, 1):
                     text = text.replace(f"{{{{match_group_{i}}}}}", group or "")
+                    # BrowserAgent 风格: {0} 对应 match_groups[0]
+                    text = text.replace(f"{{{i - 1}}}", group or "")
                 text = text.replace("{{full_match}}", full_match)
                 action_copy["text"] = text
 
@@ -247,6 +254,7 @@ class RuleMatcher:
                 if isinstance(value, str):
                     for i, group in enumerate(match_groups, 1):
                         value = value.replace(f"{{{{match_group_{i}}}}}", group or "")
+                        value = value.replace(f"{{{i - 1}}}", group or "")
                     value = value.replace("{{full_match}}", full_match)
                     action_copy[key] = value
             print(f"[MATCH] Processed action: {action_copy}")

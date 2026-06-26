@@ -8,7 +8,14 @@
       "Bash(python -c \"import ast; ast.parse\\(open\\(''agent_graph.py'', encoding=''utf-8''\\).read\\(\\)\\)\")",
       "Bash(python:*)",
       "Bash(pip install:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Read(//e/automl/AI_project/**)",
+      "Read(//e/automl/AI_project/BrowserAgent/**)",
+      "Read(//tmp/**)",
+      "Bash(rm /tmp/test_export.json /tmp/test_rule.json)",
+      "Bash(PYTHONIOENCODING=utf-8 python -m pytest tests/ scripts/test_main_entry_card.py --collect-only)",
+      "Bash(PYTHONIOENCODING=utf-8 python -m pytest tests/)",
+      "Bash(echo \"exit: $?\")"
     ]
   },
   "python": {

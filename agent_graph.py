@@ -32,6 +32,7 @@ from nodes import (
     error_handler_node,
     fast_path_node,
     template_match_node,
+    browser_pre_step_node,
 )
 from nodes.task_decomposer_node import task_decomposer_node
 
@@ -105,10 +106,11 @@ def build_agent_graph() -> StateGraph:
     Build and return the LangGraph StateGraph for the GUI automation agent.
 
     Graph structure for multi-step tasks:
-        START -> task_decomposer -> fast_path -> (execution | capture) -> reasoning -> judge -> (execution | template_match)
-                                                                                        -> (next step | END)
+        START -> browser_pre_step -> task_decomposer -> fast_path -> (execution | capture) -> reasoning -> judge -> (execution | template_match)
+                                                                                               -> (next step | END)
 
     Nodes:
+        - browser_pre_step: Playwright browser pre-steps (no-op when not configured)
         - task_decomposer: Parse multi-step tasks into sub-steps
         - fast_path: Rule-based quick matching
         - capture: Screenshot capture
@@ -119,6 +121,7 @@ def build_agent_graph() -> StateGraph:
         - error_handler: Error recovery
 
     Conditional edges:
+        - After browser_pre_step: -> task_decomposer
         - After task_decomposer: -> fast_path
         - After fast_path: matched -> execution, not matched -> capture
         - After capture: success -> reasoning, error -> error_handler
@@ -141,9 +144,13 @@ def build_agent_graph() -> StateGraph:
     builder.add_node("execution", execution_node)
     builder.add_node("continue_handler", continue_handler)
     builder.add_node("error_handler", error_handler_node)
+    builder.add_node("browser_pre_step", browser_pre_step_node)
 
-    # Set entry point to task_decomposer (parse multi-step tasks first)
-    builder.set_entry_point("task_decomposer")
+    # Set entry point to browser_pre_step (no-op when no pre-steps configured)
+    builder.set_entry_point("browser_pre_step")
+
+    # Browser pre-step -> task_decomposer
+    builder.add_edge("browser_pre_step", "task_decomposer")
 
     # Add conditional edges
     def fast_path_router(state: AgentState) -> Literal["execution", "capture"]:
@@ -307,6 +314,7 @@ def build_agent_graph_simple() -> StateGraph:
         START -> task_decomposer -> fast_path -> (execution | capture) -> reasoning -> judge -> (execution | template_match)
                                                                                         -> (next step | END)
     Nodes:
+        - browser_pre_step: Playwright browser pre-steps (no-op when not configured)
         - task_decomposer: Parse multi-step tasks into sub-steps
         - fast_path: Rule-based quick matching
         - capture: Screenshot capture
@@ -316,6 +324,7 @@ def build_agent_graph_simple() -> StateGraph:
         - execution: Action execution
         - error_handler: Error recovery
     Conditional edges:
+        - After browser_pre_step: -> task_decomposer
         - After task_decomposer: -> fast_path
         - After fast_path: matched -> execution, not matched -> capture
         - After capture: success -> reasoning, error -> error_handler
@@ -336,9 +345,13 @@ def build_agent_graph_simple() -> StateGraph:
     builder.add_node("execution", execution_node)
     builder.add_node("continue_handler", continue_handler)
     builder.add_node("error_handler", error_handler_node)
+    builder.add_node("browser_pre_step", browser_pre_step_node)
 
-    # Set entry point to task_decomposer (parse multi-step tasks first)
-    builder.set_entry_point("task_decomposer")
+    # Set entry point to browser_pre_step (no-op when no pre-steps configured)
+    builder.set_entry_point("browser_pre_step")
+
+    # Browser pre-step -> task_decomposer
+    builder.add_edge("browser_pre_step", "task_decomposer")
 
     # Add conditional edges
     def fast_path_router(state: AgentState) -> Literal["execution", "capture"]:
@@ -477,6 +490,14 @@ async def run_agent_async(
     intent_mapping_config_path: Optional[str] = None,  # 映射配置路径
     semantic_matched_id: Optional[str] = None,  # 语义匹配的 ID
     semantic_parameters: Optional[dict] = None,  # 语义匹配提取的参数
+    input_images: Optional[list[str]] = None,  # 用户提供的图片（base64 data URI 或 HTTP URL）
+    # Browser pre-step parameters
+    browser_pre_steps: Optional[list[dict]] = None,
+    browser_headless: bool = False,
+    browser_storage_state: Optional[str] = None,
+    browser_user_data_dir: Optional[str] = None,
+    target_url: Optional[str] = None,
+    cdp_endpoint: Optional[str] = None,
 ) -> dict:
     """
     Run the GUI automation agent asynchronously.
@@ -502,7 +523,38 @@ async def run_agent_async(
     print(f"Max Retries per Step: {max_retries}")
     print(f"Intent Mapping: {use_intent_mapping}")
     print(f"Semantic Matched ID: {semantic_matched_id}")
+    print(f"Browser pre-steps: {len(browser_pre_steps) if browser_pre_steps else 0}")
     print("=" * 60)
+
+    # Auto-extract browser_pre_steps from intent mapping if not explicitly provided
+    if not browser_pre_steps and (semantic_matched_id or instruction):
+        try:
+            from nodes.task_decomposer_node import IntentMappingConfig
+            config = IntentMappingConfig(intent_mapping_config_path or "data/intent_mappings.json")
+            mapping = None
+            # Priority 1: exact ID match from semantic/voice matcher
+            if semantic_matched_id:
+                mapping = config.get_mapping_by_id(semantic_matched_id)
+            # Priority 2: keyword-based match against instruction text
+            if not mapping:
+                result = config.match(instruction)
+                if result:
+                    mapping = result[0]
+            if mapping:
+                browser_pre_steps = mapping.get("browser_pre_steps", [])
+                if browser_pre_steps:
+                    print(f"[INFO] Auto-extracted {len(browser_pre_steps)} browser pre-step(s) from intent mapping '{mapping.get('id')}'")
+        except Exception:
+            pass
+
+    # Build target_url shortcut: if no explicit pre_steps but target_url is given,
+    # create a single navigate+wait_idle pre-step
+    if not browser_pre_steps and target_url:
+        browser_pre_steps = [
+            {"action": "browser_navigate", "url": target_url},
+            {"action": "browser_wait_idle"},
+        ]
+        print(f"[INFO] Created browser pre-steps from target_url: {target_url}")
 
     # Use pre-compiled agent if provided (hot-start), otherwise compile now
     if compiled_agent is not None:
@@ -526,6 +578,7 @@ async def run_agent_async(
         "intent_mapping_config_path": intent_mapping_config_path or "data/intent_mappings.json",
         "semantic_matched_id": semantic_matched_id,  # 语义匹配结果
         "semantic_parameters": semantic_parameters or {},  # 语义匹配参数
+        "input_images": input_images,  # 用户提供的图片
         "step_id": 0,
         "screenshot_path": "",
         "messages": [],
@@ -541,6 +594,13 @@ async def run_agent_async(
         "output_dir": get_output_dir(),
         "screenshot_url": "http://192.168.137.1:8000/images",
         "stop_event": stop_event,  # Pass stop_event to state for node-level cancellation check
+        # Browser pre-step configuration
+        "browser_pre_steps": browser_pre_steps or [],
+        "browser_headless": browser_headless,
+        "browser_storage_state": browser_storage_state,
+        "browser_user_data_dir": browser_user_data_dir,
+        "target_url": target_url,
+        "cdp_endpoint": cdp_endpoint,
     }
     final_state = state
     config = {"recursion_limit": 500}
@@ -594,6 +654,16 @@ async def run_agent_async(
         if progress_callback:
             progress_callback(state, status="failed", message=str(e))
 
+    # Cleanup browser context if one was created for this task.
+    # When using CDP the shared browser stays alive; only the per-task context closes.
+    _browser_tools = final_state.get("browser_tools")
+    if _browser_tools is not None:
+        try:
+            await _browser_tools.close()
+            print("[AGENT] Browser context closed")
+        except Exception as e:
+            print(f"[AGENT] Warning: browser cleanup failed: {e}")
+
     # Final summary
     print("\n" + "=" * 60)
     print("EXECUTION SUMMARY")
@@ -617,6 +687,12 @@ def run_agent(
     max_retries: int = 3,
     add_info: Optional[str] = None,
     rules_dir: str = "./rules",
+    input_images: Optional[list[str]] = None,
+    target_url: Optional[str] = None,
+    browser_headless: bool = False,
+    browser_storage_state: Optional[str] = None,
+    browser_user_data_dir: Optional[str] = None,
+    cdp_endpoint: Optional[str] = None,
 ) -> dict:
     """
     Synchronous wrapper for run_agent_async.
@@ -631,4 +707,10 @@ def run_agent(
         max_retries=max_retries,
         add_info=add_info,
         rules_dir=rules_dir,
+        input_images=input_images,
+        target_url=target_url,
+        browser_headless=browser_headless,
+        browser_storage_state=browser_storage_state,
+        browser_user_data_dir=browser_user_data_dir,
+        cdp_endpoint=cdp_endpoint,
     ))

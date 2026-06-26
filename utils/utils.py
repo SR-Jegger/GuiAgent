@@ -173,7 +173,7 @@ def encode_image_to_base64(image_path):
         return base64.b64encode(image_file.read()).decode('utf-8')
 
 
-def build_messages(image_path, instruction, history_output, model_name, history_n=4, image_url=None):
+def build_messages(image_path, instruction, history_output, model_name, history_n=4, image_url=None, input_images=None):
     """
     Construct the multi-turn message list for the VLM.
 
@@ -184,6 +184,7 @@ def build_messages(image_path, instruction, history_output, model_name, history_
         model_name:      Model identifier (affects history summarization).
         history_n:       Number of recent history turns to include as images.
         image_url:       HTTP URL for the current screenshot (preferred over base64).
+        input_images:    Optional list of user-provided image data URIs or HTTP URLs.
 
     Returns:
         A list of message dicts suitable for the OpenAI API.
@@ -209,10 +210,18 @@ def build_messages(image_path, instruction, history_output, model_name, history_
         f"Previous actions Have finished:\n{previous_actions_str}"
     )
 
+    # If user provided reference images, add explicit guidance to use them
+    if input_images:
+        instruction_prompt += (
+            f"\n[Reference Images]: {len(input_images)} image(s) are attached below "
+            "as visual reference. Use them to locate the target element by "
+            "comparing visual appearance (icon, text, layout) with the screenshot."
+        )
+
     # Helper: get image content (URL or base64)
     def get_image_content(item_image_path, item_image_url=None):
         """Return image_url dict, preferring URL over base64."""
-        if item_image_url:
+        if not item_image_url:
             return {
                 "type": "image_url",
                 "image_url": {"url": item_image_url}
@@ -224,6 +233,22 @@ def build_messages(image_path, instruction, history_output, model_name, history_
                 "type": "image_url",
                 "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}
             }
+
+    # Helper: build image_url blocks for user-provided images
+    def build_input_image_blocks(images):
+        if not images:
+            return []
+        blocks = []
+        for img in images:
+            if img.startswith("data:") or img.startswith("http"):
+                blocks.append({"type": "image_url", "image_url": {"url": img}})
+            else:
+                # Assume local file path, encode to base64
+                b64 = encode_image_to_base64(img)
+                blocks.append({"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}})
+        return blocks
+
+    input_img_blocks = build_input_image_blocks(input_images or [])
 
     # Assemble messages
     messages = [
@@ -243,12 +268,14 @@ def build_messages(image_path, instruction, history_output, model_name, history_
             image_content = get_image_content(item_image_path, item_image_url)
 
             if idx == 0:
+                content_blocks = [
+                    {"type": "text", "text": instruction_prompt},
+                    image_content,
+                ]
+                content_blocks.extend(input_img_blocks)
                 messages.append({
                     "role": "user",
-                    "content": [
-                        {"type": "text", "text": instruction_prompt},
-                        image_content,
-                    ],
+                    "content": content_blocks,
                 })
             else:
                 messages.append({
@@ -269,12 +296,14 @@ def build_messages(image_path, instruction, history_output, model_name, history_
     else:
         # No history, send current image directly
         current_image_content = get_image_content(image_path, image_url)
+        content_blocks = [
+            {"type": "text", "text": instruction_prompt},
+            current_image_content,
+        ]
+        content_blocks.extend(input_img_blocks)
         messages.append({
             "role": "user",
-            "content": [
-                {"type": "text", "text": instruction_prompt},
-                current_image_content,
-            ],
+            "content": content_blocks,
         })
 
     return messages
@@ -471,6 +500,78 @@ class GUIOwlWrapper(LlmWrapper, MultimodalLlmWrapper):
                 print('Error calling LLM, will retry soon...')
                 print(e)
         return ERROR_CALLING_LLM, None, None
+
+
+def parse_input_images_from_text(text: str) -> tuple[str, list[str]]:
+    """
+    Extract embedded images from instruction text.
+
+    Supports two formats:
+      1. ``data:image/png;base64,iVBORw0KGgo...`` — inline base64 data URI
+      2. ``file:relative/or/absolute/path.png`` — local file, auto-encoded
+
+    Removes matched patterns from the text and returns cleaned text
+    together with the extracted image list (all as data URIs).
+
+    Returns:
+        (cleaned_text, list_of_data_uris)
+    """
+    import re
+    import os
+
+    result_images = []
+
+    # 1. Extract data:image URIs
+    data_uri_pattern = re.compile(r"data:image/\w+;base64,[A-Za-z0-9+/=]+")
+    data_matches = data_uri_pattern.findall(text)
+    result_images.extend(data_matches)
+    text = data_uri_pattern.sub("", text)
+
+    # 2. Extract file: paths (up to whitespace, end-of-string, or another prefix)
+    #    Resolve relative paths against: (a) CWD, (b) project root
+    _project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    # Match typical file-path chars only (stops at Chinese/Unicode, spaces, quotes, etc.)
+    file_pattern = re.compile(r"file:([a-zA-Z0-9_\-\.\/\\\:]+)")
+    file_matches = file_pattern.findall(text)
+    for file_path in file_matches:
+        # Try to resolve the path
+        resolved = None
+        if os.path.isabs(file_path) and os.path.exists(file_path):
+            resolved = file_path
+        if resolved is None:
+            # Try CWD
+            cwd_path = os.path.join(os.getcwd(), file_path)
+            if os.path.exists(cwd_path):
+                resolved = os.path.normpath(cwd_path)
+        if resolved is None:
+            # Try project root (utils/../ = project root)
+            proj_path = os.path.join(_project_root, file_path)
+            if os.path.exists(proj_path):
+                resolved = os.path.normpath(proj_path)
+
+        if resolved:
+            try:
+                with open(resolved, "rb") as f:
+                    b64 = base64.b64encode(f.read()).decode("utf-8")
+                # Guess MIME from extension
+                ext = os.path.splitext(resolved)[1].lower()
+                mime_map = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+                            ".gif": "image/gif", ".webp": "image/webp", ".bmp": "image/bmp"}
+                mime = mime_map.get(ext, "image/png")
+                result_images.append(f"data:{mime};base64,{b64}")
+                print(f"[parse_input_images] Encoded file: {resolved}")
+            except Exception as exc:
+                print(f"[parse_input_images] Failed to read {resolved}: {exc}")
+        else:
+            print(f"[parse_input_images] File not found: {file_path} "
+                  f"(tried CWD={os.getcwd()}, project_root={_project_root})")
+
+    text = file_pattern.sub("", text)
+
+    # Cleanup: collapse whitespace
+    text = re.sub(r" {2,}", " ", text).strip()
+    return text, result_images
+
 
 def process_markdown_task(file_path):
     with open(file_path, 'r', encoding='utf-8') as f:

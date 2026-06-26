@@ -12,6 +12,7 @@ from nodes.error_handler_node import error_handler_node
 from nodes.fast_path_node import fast_path_node
 from nodes.template_match_node import template_match_node
 from nodes.task_decomposer_node import task_decomposer_node
+from nodes.browser_pre_step_node import browser_pre_step_node
 
 __all__ = [
     "capture_node",
@@ -22,5 +23,6 @@ __all__ = [
     "fast_path_node",
     "template_match_node",
     "task_decomposer_node",
+    "browser_pre_step_node",
     "test_modle",
 ]

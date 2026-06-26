@@ -234,17 +234,22 @@ class SemanticMatcher:
         Returns:
             MatchResult: 匹配结果
         """
+        print(f"[SemanticMatcher] === match start === user_text={user_text!r}")
+        print(f"[SemanticMatcher] building prompt (mappings_text len={len(self._mappings_text)})...")
         prompt = SEMANTIC_MATCH_PROMPT.format(
             mappings_text=self._mappings_text,
             user_text=user_text
         )
+        print(f"[SemanticMatcher] prompt built, len={len(prompt)}, calling LLM...")
 
         try:
             response = await self._call_llm(prompt)
+            print(f"[SemanticMatcher] LLM response received, len={len(response)}, parsing...")
             result = self._parse_response(response, user_text)
+            print(f"[SemanticMatcher] parse done, matched_id={result.matched_id}")
             return result
         except Exception as e:
-            print(f"[SemanticMatcher] LLM调用失败: {e}")
+            print(f"[SemanticMatcher] LLM调用失败: {type(e).__name__}: {e}")
             return MatchResult(
                 matched_id=None,
                 confidence=0.0,
@@ -256,22 +261,38 @@ class SemanticMatcher:
 
     async def _call_llm(self, prompt: str) -> str:
         """调用 LLM"""
+        print(f"[SemanticMatcher] _call_llm enter, llm_client={'set' if self.llm_client else 'None'}")
         if self.llm_client:
-            return await self.llm_client(prompt)
+            print(f"[SemanticMatcher] awaiting llm_client(prompt)...")
+            result = await self.llm_client(prompt)
+            print(f"[SemanticMatcher] llm_client returned, len={len(result) if result else 0}")
+            return result
 
+        print(f"[SemanticMatcher] importing AsyncOpenAI...")
         from openai import AsyncOpenAI
+        print(f"[SemanticMatcher] AsyncOpenAI imported, creating client...")
+
+        base_url = self.model_config.get("base_url", "https://dashscope.aliyuncs.com/compatible-mode/v1")
+        api_key = self.model_config.get("api_key", "")
+        model = self.model_config.get("model", "qwen-plus")
+        print(f"[SemanticMatcher] base_url={base_url}")
+        print(f"[SemanticMatcher] model={model}")
+        print(f"[SemanticMatcher] api_key={'set' if api_key else 'EMPTY!'}")
 
         client = AsyncOpenAI(
-            base_url=self.model_config.get("base_url", "https://dashscope.aliyuncs.com/compatible-mode/v1"),
-            api_key=self.model_config.get("api_key", ""),
+            base_url=base_url,
+            api_key=api_key,
+            timeout=15.0,
         )
+        print(f"[SemanticMatcher] client created (timeout=15s), calling chat.completions.create...")
 
         response = await client.chat.completions.create(
-            model=self.model_config.get("model", "qwen-plus"),
+            model=model,
             messages=[{"role": "user", "content": prompt}],
             temperature=0.1,
+            timeout=15.0,
         )
-
+        print(f"[SemanticMatcher] HTTP response received, extracting content...")
         return response.choices[0].message.content
 
     def _parse_response(self, response: str, original_text: str) -> MatchResult:
@@ -338,13 +359,15 @@ class SemanticMatcher:
             )
 
     def _extract_parameters(self, text: str, mapping: Dict) -> Dict[str, str]:
-        """从文本中提取参数"""
+        """从文本中提取参数，抽不到时用 default 兜底"""
         parameters = {}
         for param in mapping.get("parameters", []):
             param_name = param["name"]
             param_value = self._extract_single_param(text, param)
             if param_value:
                 parameters[param_name] = param_value
+            elif param.get("default") is not None:
+                parameters[param_name] = param["default"]
         return parameters
 
     def _extract_single_param(self, text: str, param_def: Dict) -> Optional[str]:
@@ -476,6 +499,8 @@ class RuleBasedMatcher:
 
             if param_value:
                 parameters[param_name] = param_value
+            elif param.get("default") is not None:
+                parameters[param_name] = param["default"]
             elif param.get("required", False):
                 missing_params.append(param_name)
 
@@ -532,16 +557,36 @@ class RuleBasedMatcher:
 
         return None
 
-    def _fill_steps(self, steps: List[str], parameters: Dict, missing_params: list) -> List[str]:
-        """填充步骤模板"""
+    def _fill_steps(self, steps: List, parameters: Dict, missing_params: list) -> List:
+        """填充步骤模板中的参数占位符。
+
+        支持两种 step 类型(与 task_decomposer_node 一致):
+        - str: 文本描述,"{{param}}" 替换为参数值
+        - dict: 浏览器结构化动作,{"action":"browser_*","selector":"...{{param}}..."},
+          对 dict 中所有字符串字段做占位符替换
+        """
         result = []
         for step in steps:
-            substituted = step
-            for name, value in parameters.items():
-                substituted = substituted.replace(f"{{{{{name}}}}}", str(value))
-            for name in missing_params:
-                substituted = substituted.replace(f"{{{{{name}}}}}", f"[缺失{name}]")
-            result.append(substituted)
+            if isinstance(step, dict):
+                # Browser step dict - replace placeholders in every string field.
+                substituted = {}
+                for key, value in step.items():
+                    if isinstance(value, str):
+                        for name, val in parameters.items():
+                            value = value.replace(f"{{{{{name}}}}}", str(val))
+                        for name in missing_params:
+                            value = value.replace(f"{{{{{name}}}}}", f"[缺失{name}]")
+                        substituted[key] = value
+                    else:
+                        substituted[key] = value
+                result.append(substituted)
+            else:
+                substituted = step
+                for name, value in parameters.items():
+                    substituted = substituted.replace(f"{{{{{name}}}}}", str(value))
+                for name in missing_params:
+                    substituted = substituted.replace(f"{{{{{name}}}}}", f"[缺失{name}]")
+                result.append(substituted)
         return result
 
     def _get_instruction(self, mapping: Dict, parameters: Dict, missing_params: List[str]) -> str:

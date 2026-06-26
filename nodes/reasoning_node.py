@@ -75,7 +75,8 @@ def reasoning_node(state: AgentState) -> AgentState:
     history = state.get("history", [])
 
     MODEL_CONFIG = state.get("MODEL_CONFIG", None)
-    vlm_config = MODEL_CONFIG["models"]["GUI-Owl-1.5-8B"]
+    # vlm_config = MODEL_CONFIG["models"]["GUI-Owl-1.5-8B"]
+    vlm_config = MODEL_CONFIG["models"]["gui-plus-20260226"]
     model = vlm_config["model"]
     base_url = vlm_config["base_url"]
     api_key = vlm_config["api_key"]
@@ -94,9 +95,18 @@ def reasoning_node(state: AgentState) -> AgentState:
     #     print(f"[REASONING] Task context: {task_instruction[:80]}...")
 
     try:
-        # Build messages with screenshot and history
+        # Build messages with screenshot, history, and user-provided images
         print(f"[REASONING] current_instruction: {current_instruction}")
-        messages = build_messages(screenshot_path, current_instruction, history, model, image_url=screenshot_url)
+        input_images = state.get("input_images")
+        if input_images:
+            print(f"[REASONING] input_images count: {len(input_images)}, "
+                  f"first 80 chars: {input_images[0][:80]}...")
+        else:
+            print(f"[REASONING] No input_images in state")
+        messages = build_messages(
+            screenshot_path, current_instruction, history, model,
+            image_url=screenshot_url, input_images=input_images,
+        )
 
         # Add supplementary info if provided
         if state.get("add_info"):

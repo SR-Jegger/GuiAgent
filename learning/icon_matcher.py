@@ -15,7 +15,7 @@ Phase 2 (A+B): Resolution-aware adaptive matching with dynamic scaling.
 import os
 import math
 import logging
-from typing import Optional, Tuple, List, Dict, Any
+from typing import Optional, Tuple, List, Dict, Any, Union
 
 # OpenCV for template matching (optional dependency)
 try:
@@ -42,6 +42,36 @@ DEFAULT_MATCH_THRESHOLD = 0.85
 DEFAULT_SCALE_RANGE = [0.8, 0.9, 1.0, 1.1, 1.2]
 DEFAULT_SCREEN_DIAGONAL = 1000  # Normalized coordinate range
 DEFAULT_SCREEN_SIZE = (1920, 1080)  # Fallback if auto-detection fails
+
+# Anchor point mapping: ratio relative to matched bbox top-left
+ANCHOR_MAP = {
+    "top_left": (0.0, 0.0),
+    "top_center": (0.5, 0.0),
+    "top_right": (1.0, 0.0),
+    "center_left": (0.0, 0.5),
+    "center": (0.5, 0.5),
+    "center_right": (1.0, 0.5),
+    "bottom_left": (0.0, 1.0),
+    "bottom_center": (0.5, 1.0),
+    "bottom_right": (1.0, 1.0),
+}
+
+Bbox = Tuple[int, int, int, int]  # (x, y, w, h)
+
+
+def apply_anchor(bbox: Bbox, anchor: str = "center") -> Tuple[int, int]:
+    """Calculate click coordinate from bbox using anchor point.
+
+    Args:
+        bbox: (x, y, w, h) of matched region
+        anchor: Anchor name, e.g. "center", "bottom_right", "top_left"
+
+    Returns:
+        Pixel coordinate (x, y)
+    """
+    x, y, w, h = bbox
+    rx, ry = ANCHOR_MAP.get(anchor, (0.5, 0.5))
+    return (int(x + w * rx), int(y + h * ry))
 
 
 def get_screen_resolution() -> Tuple[int, int]:
@@ -194,8 +224,9 @@ class IconMatcher:
         screenshot: Any,
         roi_region: Optional[Tuple[int, int, int, int]] = None,
         normalized_coords: bool = True,
-        screen_size: Optional[Tuple[int, int]] = None
-    ) -> Optional[Tuple[int, int]]:
+        screen_size: Optional[Tuple[int, int]] = None,
+        return_bbox: bool = False
+    ) -> Optional[Union[Tuple[int, int], Tuple[Tuple[int, int], Bbox]]]:
         """
         Find icon location in screenshot using multi-scale template matching.
 
@@ -206,9 +237,11 @@ class IconMatcher:
             normalized_coords: If True, return normalized coordinates (0-1000 range)
             screen_size: Screen size (width, height) for coordinate normalization.
                         If None, auto-detect from current screen.
+            return_bbox: If True, return ((x, y), (bx, by, bw, bh)) — pixel coord + absolute bbox.
+                         Bbox is always in pixel coords regardless of normalized_coords.
 
         Returns:
-            Coordinate (x, y) in normalized or pixel format, or None if not found
+            Coordinate (x, y) or ((x, y), bbox), or None if not found
         """
         if not CV2_AVAILABLE:
             logger.warning("OpenCV not available, cannot perform image matching")
@@ -241,16 +274,23 @@ class IconMatcher:
         # Multi-scale matching
         best_match = None
         best_score = 0.0
+        best_bbox = None
 
         for scale in self.scale_range:
-            result = self._match_at_scale(template, search_region, scale)
+            result = self._match_at_scale(template, search_region, scale, return_bbox=return_bbox)
             if result is None:
                 continue
 
-            score, coord = result
+            if return_bbox:
+                score, coord, bbox = result
+            else:
+                score, coord = result
+
             if score > best_score:
                 best_score = score
                 best_match = coord
+                if return_bbox:
+                    best_bbox = bbox
 
         if best_match is None or best_score < self.match_threshold:
             logger.info(f"Icon match failed: {icon_path}, best_score={best_score:.2f}")
@@ -261,6 +301,14 @@ class IconMatcher:
         abs_y = best_match[1] + offset_y
 
         logger.info(f"Icon matched: {icon_path} at ({abs_x}, {abs_y}), score={best_score:.2f}")
+
+        if return_bbox and best_bbox:
+            bx, by, bw, bh = best_bbox
+            bbox_abs = (bx + offset_x, by + offset_y, bw, bh)
+            if normalized_coords and screen_size:
+                norm_coord = self._normalize_coordinate(abs_x, abs_y, screen_size)
+                return (norm_coord, bbox_abs)
+            return ((abs_x, abs_y), bbox_abs)
 
         # Normalize if requested
         if normalized_coords and screen_size:
@@ -311,8 +359,9 @@ class IconMatcher:
         self,
         template: Any,
         screenshot: Any,
-        scale: float
-    ) -> Optional[Tuple[float, Tuple[int, int]]]:
+        scale: float,
+        return_bbox: bool = False
+    ) -> Optional[Tuple[float, Tuple[int, int], Optional[Bbox]]]:
         """
         Perform template matching at a specific scale.
 
@@ -320,9 +369,12 @@ class IconMatcher:
             template: Template image (numpy array)
             screenshot: Screenshot image (numpy array)
             scale: Scale factor for template
+            return_bbox: If True, also return the matched region bbox
 
         Returns:
-            Tuple of (score, coordinate) or None if no match
+            Tuple of (score, coordinate[, bbox]) or None if no match.
+            When return_bbox is False: (score, (center_x, center_y))
+            When return_bbox is True:  (score, (center_x, center_y), (x, y, w, h))
         """
         try:
             # Resize template
@@ -352,6 +404,8 @@ class IconMatcher:
             center_x = max_loc[0] + w_t // 2
             center_y = max_loc[1] + h_t // 2
 
+            if return_bbox:
+                return (max_val, (center_x, center_y), (max_loc[0], max_loc[1], w_t, h_t))
             return (max_val, (center_x, center_y))
 
         except Exception as e:
@@ -509,8 +563,9 @@ class IconMatcher:
         current_resolution: Optional[Tuple[int, int]] = None,
         current_dpi: Optional[int] = None,
         roi_region: Optional[Tuple[int, int, int, int]] = None,
-        normalized_coords: bool = True
-    ) -> Optional[Tuple[int, int]]:
+        normalized_coords: bool = True,
+        return_bbox: bool = False
+    ) -> Optional[Union[Tuple[int, int], Tuple[Tuple[int, int], Bbox]]]:
         """
         方案A+B: 自适应图像匹配
 
@@ -525,9 +580,11 @@ class IconMatcher:
             current_dpi: Current DPI. If None, auto-detect.
             roi_region: Optional search region
             normalized_coords: Return normalized coordinates
+            return_bbox: If True, return ((x, y), bbox) — pixel coord + absolute bbox.
+                         Bbox is always in pixel coords regardless of normalized_coords.
 
         Returns:
-            Coordinate (x, y) or None
+            Coordinate (x, y) or ((x, y), bbox), or None
         """
         if not CV2_AVAILABLE or not icon_data.has_icon():
             return None
@@ -575,20 +632,27 @@ class IconMatcher:
         best_match = None
         best_score = 0.0
         best_scale = 1.0
+        best_bbox = None
         all_matches = []
 
         for scale in scales:
-            result = self._match_at_scale(template, search_region, scale)
+            result = self._match_at_scale(template, search_region, scale, return_bbox=return_bbox)
             if result is None:
                 continue
 
-            score, coord = result
+            if return_bbox:
+                score, coord, bbox = result
+            else:
+                score, coord = result
+
             all_matches.append((scale, score, coord))
 
             if score > best_score:
                 best_score = score
                 best_match = coord
                 best_scale = scale
+                if return_bbox:
+                    best_bbox = bbox
 
         # Log all attempts
         for scale, score, coord in all_matches:
@@ -606,6 +670,14 @@ class IconMatcher:
 
         logger.info(f"Adaptive match success: {icon_data.icon_path} at ({abs_x}, {abs_y}), "
                    f"score={best_score:.2f}, scale={best_scale:.2f}")
+
+        if return_bbox and best_bbox:
+            bx, by, bw, bh = best_bbox
+            bbox_abs = (bx + offset_x, by + offset_y, bw, bh)
+            if normalized_coords:
+                norm_coord = self._normalize_coordinate(abs_x, abs_y, current_resolution)
+                return (norm_coord, bbox_abs)
+            return ((abs_x, abs_y), bbox_abs)
 
         # Normalize if requested
         if normalized_coords:
@@ -629,7 +701,13 @@ class IconData:
         "fallback_coord": [150, 225],
         "recorded_resolution": [1920, 1080],  // Phase 2: Screen resolution when recorded
         "recorded_dpi": 100,                  // Phase 2: DPI when recorded
-        "recorded_window_size": [800, 600]    // Phase 2: Window size if applicable
+        "recorded_window_size": [800, 600],   // Phase 2: Window size if applicable
+        "click_anchor": "bottom_right",       // Phase 3: Anchor for click point
+        "cascade_target": {                   // Phase 3: Nested target to match within bbox
+            "icon_path": "screenshots/ok_button.png",
+            "match_threshold": 0.85,
+            "click_anchor": "center"
+        }
     }
     """
 
@@ -641,10 +719,12 @@ class IconData:
         fallback_coord: Optional[List[int]] = None,
         recorded_resolution: Optional[List[int]] = None,
         recorded_dpi: int = 100,
-        recorded_window_size: Optional[List[int]] = None
+        recorded_window_size: Optional[List[int]] = None,
+        cascade_target: Optional["IconData"] = None,
+        click_anchor: str = "center"
     ):
         """
-        Initialize IconData with optional resolution metadata.
+        Initialize IconData with optional resolution metadata and cascade support.
 
         Args:
             icon_path: Path to icon template image
@@ -654,6 +734,8 @@ class IconData:
             recorded_resolution: Screen resolution when icon was recorded [w, h]
             recorded_dpi: DPI when icon was recorded (default 100)
             recorded_window_size: Window size if icon is window-relative [w, h]
+            cascade_target: Nested IconData to match within this icon's bbox
+            click_anchor: Anchor point for final click, e.g. "center", "bottom_right"
         """
         self.icon_path = icon_path
         self.match_threshold = match_threshold
@@ -662,10 +744,15 @@ class IconData:
         self.recorded_resolution = recorded_resolution
         self.recorded_dpi = recorded_dpi
         self.recorded_window_size = recorded_window_size
+        self.cascade_target = cascade_target
+        self.click_anchor = click_anchor
 
     @classmethod
     def from_dict(cls, data: Dict) -> "IconData":
         """Create IconData from dictionary."""
+        cascade_data = data.get("cascade_target")
+        cascade_target = IconData.from_dict(cascade_data) if cascade_data else None
+
         return cls(
             icon_path=data.get("icon_path"),
             match_threshold=data.get("match_threshold", DEFAULT_MATCH_THRESHOLD),
@@ -673,7 +760,9 @@ class IconData:
             fallback_coord=data.get("fallback_coord"),
             recorded_resolution=data.get("recorded_resolution"),
             recorded_dpi=data.get("recorded_dpi", 100),
-            recorded_window_size=data.get("recorded_window_size")
+            recorded_window_size=data.get("recorded_window_size"),
+            cascade_target=cascade_target,
+            click_anchor=data.get("click_anchor", "center")
         )
 
     def to_dict(self) -> Dict:
@@ -694,6 +783,10 @@ class IconData:
             result["recorded_dpi"] = self.recorded_dpi
         if self.recorded_window_size:
             result["recorded_window_size"] = self.recorded_window_size
+        if self.cascade_target:
+            result["cascade_target"] = self.cascade_target.to_dict()
+        if self.click_anchor != "center":
+            result["click_anchor"] = self.click_anchor
         return result
 
     def has_icon(self) -> bool:
@@ -736,6 +829,46 @@ class IconData:
         return res_scale * dpi_scale
 
 
+def _match_single_icon(
+    matcher: IconMatcher,
+    icon_data: IconData,
+    screenshot: Any,
+    screen_size: Tuple[int, int],
+    current_dpi: int,
+    use_normalized: bool,
+    use_adaptive: bool,
+    roi_region: Optional[Tuple[int, int, int, int]],
+    return_bbox: bool = False
+) -> Optional[Union[Tuple[int, int], Tuple[Tuple[int, int], Bbox]]]:
+    """Match a single icon (no cascade), optionally returning bbox."""
+    if not icon_data.has_icon():
+        return None
+
+    roi = roi_region
+    if roi_region is None and icon_data.roi_region:
+        roi = tuple(icon_data.roi_region)
+
+    if use_adaptive and icon_data.has_resolution_info():
+        return matcher.find_icon_adaptive(
+            icon_data,
+            screenshot,
+            current_resolution=screen_size,
+            current_dpi=current_dpi,
+            roi_region=roi,
+            normalized_coords=use_normalized,
+            return_bbox=return_bbox,
+        )
+    else:
+        return matcher.find_icon(
+            icon_data.icon_path,
+            screenshot,
+            roi_region=roi,
+            normalized_coords=use_normalized,
+            screen_size=screen_size,
+            return_bbox=return_bbox,
+        )
+
+
 def resolve_coordinate_with_icon(
     matcher: IconMatcher,
     icon_data: IconData,
@@ -749,11 +882,13 @@ def resolve_coordinate_with_icon(
     Resolve action coordinate using icon matching with fallback.
 
     Phase 2: 支持自适应匹配（方案A+B）+ 自动获取屏幕分辨率
+    Phase 3: 支持级联匹配 (cascade_target) + 锚点点击 (click_anchor)
 
     Priority:
-    1. Adaptive icon matching (if icon available with resolution metadata)
-    2. Standard icon matching (if icon available without metadata)
-    3. Fallback coordinate (if icon match fails or no icon)
+    1. Cascade matching: match parent → use bbox as roi → match child → apply anchor
+    2. Adaptive icon matching (if icon available with resolution metadata)
+    3. Standard icon matching (if icon available without metadata)
+    4. Fallback coordinate (if icon match fails or no icon)
 
     Args:
         matcher: IconMatcher instance
@@ -775,31 +910,72 @@ def resolve_coordinate_with_icon(
     if current_dpi is None:
         current_dpi = get_screen_dpi()
 
-    # Try icon matching first
-    if icon_data.has_icon():
+    # ── Cascade matching ──────────────────────────────────────────────
+    if icon_data.has_icon() and icon_data.cascade_target:
         roi = None
         if icon_data.roi_region:
             roi = tuple(icon_data.roi_region)
 
-        # Use adaptive matching if resolution info available
-        if use_adaptive and icon_data.has_resolution_info():
-            coord = matcher.find_icon_adaptive(
-                icon_data,
-                screenshot,
-                current_resolution=screen_size,
-                current_dpi=current_dpi,
-                roi_region=roi,
-                normalized_coords=use_normalized
-            )
-        else:
-            # Standard matching
-            coord = matcher.find_icon(
-                icon_data.icon_path,
-                screenshot,
-                roi_region=roi,
-                normalized_coords=use_normalized,
-                screen_size=screen_size
-            )
+        # Stage 1: match parent, get bbox
+        parent_result = _match_single_icon(
+            matcher, icon_data, screenshot, screen_size, current_dpi,
+            use_normalized=False,  # need pixel bbox
+            use_adaptive=use_adaptive,
+            roi_region=roi,
+            return_bbox=True,
+        )
+        if parent_result is None:
+            logger.warning("Cascade stage 1 (parent) failed, using fallback")
+            fallback = icon_data.get_fallback_coordinate()
+            if fallback:
+                if use_normalized:
+                    return fallback
+                return matcher.denormalize_coordinate(fallback[0], fallback[1], screen_size)
+            return None
+
+        _, parent_bbox = parent_result
+        logger.info(f"Cascade stage 1: parent bbox = {parent_bbox}")
+
+        # Stage 2: match child within parent bbox, apply anchor
+        child = icon_data.cascade_target
+        child_result = _match_single_icon(
+            matcher, child, screenshot, screen_size, current_dpi,
+            use_normalized=False,
+            use_adaptive=use_adaptive,
+            roi_region=parent_bbox,
+            return_bbox=True,
+        )
+        if child_result is None:
+            logger.warning("Cascade stage 2 (child) failed, using fallback")
+            fallback = child.get_fallback_coordinate()
+            if fallback:
+                if use_normalized:
+                    return fallback
+                return matcher.denormalize_coordinate(fallback[0], fallback[1], screen_size)
+            return None
+
+        _, child_bbox = child_result
+        coord = apply_anchor(child_bbox, child.click_anchor)
+        logger.info(f"Cascade stage 2: child bbox = {child_bbox}, anchor={child.click_anchor}, coord={coord}")
+
+        if use_normalized:
+            return matcher._normalize_coordinate(coord[0], coord[1], screen_size)
+        return coord
+
+    # ── Single-stage matching ─────────────────────────────────────────
+    roi = None
+    if icon_data.roi_region:
+        roi = tuple(icon_data.roi_region)
+
+    # Try icon matching first
+    if icon_data.has_icon():
+        coord = _match_single_icon(
+            matcher, icon_data, screenshot, screen_size, current_dpi,
+            use_normalized=use_normalized,
+            use_adaptive=use_adaptive,
+            roi_region=roi,
+            return_bbox=False,
+        )
 
         if coord:
             logger.info(f"Coordinate resolved via icon matching: {coord}")

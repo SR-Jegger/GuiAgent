@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 
 from nodes.types import AgentState
 from utils.computer_tools import ComputerTools
-from rule_matcher import RuleMatcher
+from learning.rule_matcher import RuleMatcher
 from utils.action_resolver import ActionResolver, needs_resolution
 from utils.ocr_locator import OCRLocator
 
@@ -153,6 +153,26 @@ def fast_path_node(state: AgentState) -> AgentState:
         current_instruction = current_step.get("description", "")
         print(f"\n[FAST_PATH] Executing sub-step {current_step_index + 1}/{len(sub_steps)}")
         print(f"[FAST_PATH] Sub-step instruction: {current_instruction}")
+
+        # Browser sub-step short-circuit: the sub_step is a structured dict
+        # ({"action": "browser_*", "selector": "...", ...}) emitted by
+        # task_decomposer_node from intent_mappings.json. Skip RuleMatcher,
+        # OCR, and icon matching entirely - hand it straight to execution_node
+        # as a browser_use action.
+        if current_step.get("is_browser"):
+            browser_step = current_step.get("browser_step", {})
+            action_type = browser_step.get("action", "browser_action")
+            print(f"[FAST_PATH] Browser sub-step detected, short-circuiting: {action_type}")
+            return {
+                "fast_path_matched": True,
+                "actions": [{
+                    "name": "browser_use",
+                    "arguments": dict(browser_step),
+                }],
+                "execution_status": "success",
+                "tools": tools,
+                "browser_skill_matched": True,
+            }
     else:
         # Single-step task or fallback
         current_instruction = state.get("instruction", "")
@@ -265,8 +285,22 @@ def fast_path_node(state: AgentState) -> AgentState:
         vlm_actions = []
 
         for action in rule_actions:
-            action_type = action.get("type", "")
+            # Action type may live under "type" (desktop convention) or "action"
+            # (browser convention, matching BrowserAgent/skills/browser_skills.json).
+            action_type = action.get("type", "") or action.get("action", "")
             coordinate = action.get("coordinate")
+
+            # Browser actions: preserve the full step dict so execute_browser_step
+            # in execution_node can read selector/url/text/value/exact/role/etc.
+            # Browser steps skip coordinate rescaling and ComputerTools entirely.
+            if action_type.startswith("browser_"):
+                arguments = dict(action)
+                arguments["action"] = action_type
+                vlm_actions.append({
+                    "name": "browser_use",
+                    "arguments": arguments,
+                })
+                continue
 
             # 跳过无法解析坐标的点击动作并打印警告
             if action_type in ("click", "left_click", "right_click", "middle_click", "double_click"):

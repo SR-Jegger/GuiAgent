@@ -8,7 +8,7 @@ import json
 import logging
 import os
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Optional
 
 from PIL import Image
 
@@ -25,6 +25,11 @@ logging.basicConfig(
 from nodes.types import AgentState
 from utils.computer_tools import ComputerTools
 from utils.parsers import extract_tool_calls
+from utils.browser_runtime import (
+    ensure_browser_tools,
+    execute_browser_step,
+    is_browser_action,
+)
 
 from utils.utils import (
     annotate_screenshot,
@@ -41,14 +46,14 @@ except ImportError:
     print("[EXECUTION] Warning: learning module not available, operation logging disabled")
 
 
-def execution_node(state: AgentState) -> AgentState:
+async def execution_node(state: AgentState) -> AgentState:
     """
     Execute actions from LLM response.
 
     This node:
     1. Parses actions from LLM response (or uses Fast Path actions)
     2. Rescales coordinates if needed
-    3. Executes each action
+    3. Executes each action (desktop via ComputerTools or browser via BrowserTools)
     4. Annotates screenshots for debugging
     5. Updates history
 
@@ -77,6 +82,9 @@ def execution_node(state: AgentState) -> AgentState:
     output_dir = state.get("output_dir", get_output_dir())
     tools = state.get("tools")
     fast_path_matched = state.get("fast_path_matched", False)
+    # BrowserTools may already be live (from browser_pre_step_node) or None.
+    # Lazily created below if any action in this step is a browser_* action.
+    browser_tools = state.get("browser_tools")
 
     # Fast Path: use actions directly (already in VLM format)
     if fast_path_matched:
@@ -127,6 +135,15 @@ def execution_node(state: AgentState) -> AgentState:
             print(f"[EXECUTION] Warning: Could not get image dimensions: {e}")
             resized_width, resized_height = 1920, 1080  # Default
 
+    # Lazily create BrowserTools if any action in this step is a browser_* action.
+    # BrowserTools may already be live (from browser_pre_step_node); reuse it.
+    if browser_tools is None:
+        for action in action_list:
+            if is_browser_action(action.get("arguments", {})):
+                print("[EXECUTION] Browser action detected, initializing BrowserTools...")
+                browser_tools = await ensure_browser_tools(state)
+                break
+
     # Execute each action
     stop_flag = False
     executed_actions = []
@@ -145,20 +162,23 @@ def execution_node(state: AgentState) -> AgentState:
             action_type = action_parameter.get("action", "")
             print(f"  [EXECUTION] Action {action_id + 1}: {action_type}")
 
-            # Rescale coordinates
-            if fast_path_matched:
-                # Fast Path: check if coordinates are normalized and rescale
-                if action_parameter.get("coordinate_normalized"):
-                    print("  [EXECUTION] Rescaling normalized coordinates for Fast Path...")
-                    rescale_coordinates(action_parameter, screen_width, screen_height)
-            elif state.get("action_coordinate") is None:
-                # Normal VLM flow: always rescale from normalized (0-1000)
-                print("  [EXECUTION] Rescaling coordinates...")
-                rescale_coordinates(action_parameter, resized_width, resized_height)
+            # Browser actions don't need coordinate rescaling - selectors/role/text
+            # resolve against the live DOM directly. Skip the rescale block.
+            if not action_type.startswith("browser_"):
+                # Rescale coordinates
+                if fast_path_matched:
+                    # Fast Path: check if coordinates are normalized and rescale
+                    if action_parameter.get("coordinate_normalized"):
+                        print("  [EXECUTION] Rescaling normalized coordinates for Fast Path...")
+                        rescale_coordinates(action_parameter, screen_width, screen_height)
+                elif state.get("action_coordinate") is None:
+                    # Normal VLM flow: always rescale from normalized (0-1000)
+                    print("  [EXECUTION] Rescaling coordinates...")
+                    rescale_coordinates(action_parameter, resized_width, resized_height)
 
             # Execute action and check for stop signal
             print(f"  [EXECUTION] Parameters: {action_parameter}")
-            should_stop = execute_action(tools, action_parameter)
+            should_stop = await execute_action(tools, browser_tools, action_parameter)
             print(f"  [EXECUTION] Action {action_id + 1} executed successfully")
             logger = logging.getLogger(__name__)
             logger.info(f"Action {action_id + 1} executed successfully")
@@ -234,6 +254,8 @@ def execution_node(state: AgentState) -> AgentState:
         "continue_substep_flag": state.get("continue_substep_flag", True),  # Pass through flag for router
         "stop_flag": stop_flag,
         "history": history if not fast_path_matched else state.get("history", []),
+        # Persist browser_tools so later sub-steps can reuse the same page
+        "browser_tools": browser_tools,
     }
 
 
@@ -283,12 +305,18 @@ def normalize_coordinates(action_parameter: dict, width: int, height: int) -> di
     return result
 
 
-def execute_action(computer_tools: ComputerTools, action_parameter: dict) -> bool:
+async def execute_action(
+    computer_tools: ComputerTools,
+    browser_tools: Optional[Any],
+    action_parameter: dict,
+) -> bool:
     """
-    Execute a single action on the desktop.
+    Execute a single action - either desktop (via ComputerTools) or browser
+    (via BrowserTools), based on the action type prefix.
 
     Args:
-        computer_tools: ComputerTools instance
+        computer_tools: ComputerTools instance for desktop actions
+        browser_tools: BrowserTools instance (or None) for browser_* actions
         action_parameter: Dict with 'action' type and parameters
 
     Returns:
@@ -296,6 +324,18 @@ def execute_action(computer_tools: ComputerTools, action_parameter: dict) -> boo
     """
     action_type = action_parameter.get("action", "")
 
+    # ---- Browser actions: dispatch to BrowserTools via the shared runtime ----
+    if action_type.startswith("browser_"):
+        if browser_tools is None:
+            raise RuntimeError(
+                f"Browser action '{action_type}' requested but BrowserTools is not "
+                "available. Ensure browser_pre_steps triggered init or that "
+                "ensure_browser_tools was called."
+            )
+        await execute_browser_step(browser_tools, action_parameter)
+        return False
+
+    # ---- Desktop actions (existing behaviour) ----
     if action_type in ("click", "left_click"):
         computer_tools.left_click(
             action_parameter["coordinate"][0],

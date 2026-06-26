@@ -3,10 +3,16 @@
 服务启动时显示的任务入口卡片，包含：
 - 任务输入区（文字 + 语音 + 预存指令）
 - 执行进展区
+
+支持 @path/to/task.md 语法：提交时把输入框里的 @路径引用展开为
+对应 markdown 文件的原始全文（多行字符串），整体作为一个 instruction
+发给后端。展开失败（文件不存在）时该 @path 被替换为空字符串。
 """
 
 from __future__ import annotations
 
+import os
+import re
 import threading
 from typing import Callable, Optional
 from enum import Enum
@@ -772,6 +778,51 @@ def _build_main_entry_window():
             # 启动倒计时光圈
             self.countdown_circle.start()
 
+        def _resolve_instruction(self) -> tuple[str, str]:
+            """从输入框取文本，展开 @path/to/file.md 引用。
+
+            @path 语法: @后跟路径，路径字符为非空白、非@。
+            支持相对路径（相对当前工作目录）和绝对路径。
+            多个 @path 都会展开；展开失败的引用替换为空字符串。
+
+            Returns:
+                (展开后的指令文本, 错误提示)。
+                错误提示非空时表示有 @path 文件读不到，调用方应中止提交并提示。
+            """
+            text = self.text_input.toPlainText().strip()
+            if not text:
+                return "", ""
+
+            # 没有任何 @path 引用，直接返回原文
+            if "@" not in text:
+                return text, ""
+
+            missing: list[str] = []
+
+            def _expand(match: re.Match) -> str:
+                raw = match.group(1)
+                # 去掉首尾可能的中文标点或常见分隔符（路径不应包含这些）
+                path = raw.strip()
+                if not path:
+                    return ""
+                if not os.path.exists(path):
+                    missing.append(path)
+                    return ""
+                try:
+                    with open(path, "r", encoding="utf-8") as f:
+                        return f.read()
+                except Exception as exc:
+                    missing.append(f"{path} ({exc})")
+                    return ""
+
+            # @path 匹配：@后跟非空白、非@的字符
+            expanded = re.sub(r"@([^\s@]+)", _expand, text)
+
+            if missing:
+                return "", f"无法读取文件: {', '.join(missing)}"
+
+            return expanded.strip(), ""
+
         def _submit_task(self) -> None:
             """提交任务（支持倒计时期间立即执行）"""
             # 停止 ASR 录音
@@ -783,7 +834,11 @@ def _build_main_entry_window():
                 self.countdown_circle.stop()
                 self.countdown_hint.setVisible(False)
 
-            instruction = self.text_input.toPlainText().strip()
+            instruction, error = self._resolve_instruction()
+            if error:
+                self.hint_label.setText(error)
+                self._reset_to_idle()
+                return
             if not instruction:
                 self.hint_label.setText("请输入任务指令")
                 self._reset_to_idle()
@@ -808,7 +863,14 @@ def _build_main_entry_window():
                 self._asr_client.stop_recording()
 
             self.countdown_hint.setVisible(False)
-            instruction = self.text_input.toPlainText().strip()
+            instruction, error = self._resolve_instruction()
+            if error:
+                self.hint_label.setText(error)
+                self._reset_to_idle()
+                return
+            if not instruction:
+                self._reset_to_idle()
+                return
 
             if not instruction:
                 self._reset_to_idle()
@@ -923,12 +985,7 @@ def _build_main_entry_window():
             super().closeEvent(event)
 
         def _toggle_collapse(self) -> None:
-            """切换折叠状态"""
-            # 任务执行中不允许折叠
-            if self._state == CardState.RUNNING:
-                self.hint_label.setText("任务执行中，无法折叠")
-                return
-
+            """切换折叠状态（任何状态都允许折叠）"""
             if self._collapsed:
                 # 展开
                 self._collapsed = False

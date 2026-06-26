@@ -3,29 +3,6 @@
   "description": "统一意图映射配置 - 语音直接匹配到执行步骤",
   "mappings": [
     {
-      "id": "platform_locate_confirm",
-      "description": "平台定位确认",
-      "aliases": ["定位确认", "平台定位", "确认定位"],
-      "keywords": ["平台", "定位", "确认"],
-      "parameters": [
-        {
-          "name": "platform_id",
-          "description": "平台编号（数字）",
-          "extract_pattern": "any_number",
-          "required": true,
-          "examples": ["206", "二零六", "三百零一"]
-        }
-      ],
-      "sub_steps": [
-        "双击打开Edge Dev浏览器图标",
-        "输入http://localhost:3000/，进入无人作战指挥系统页面",
-        "右键点击{{platform_id}}号平台卡片",
-        "菜单中选择定位确认",
-        "点击确认按钮完成定位确认"
-      ],
-      "enabled": true
-    },
-    {
       "id": "platform_task_assign",
       "description": "平台任务指派",
       "aliases": ["任务指派", "指派任务", "执行指派"],
@@ -225,8 +202,18 @@
       "aliases": ["发送区域目标", "区域目标", "模拟区域目标"],
       "keywords": ["发送", "区域", "目标", "模拟"],
       "parameters": [ ],
+      "browser_pre_steps": [
+        {"action": "browser_navigate", "url": "http://localhost:3000/"},
+        {"action": "browser_wait_idle"},
+        {"action": "browser_click", "selector": "text=指控指令"},
+        {"action": "browser_wait_idle"},
+        {"action": "browser_click_text", "text": "区域目标发送", "exact": true},
+        {"action": "browser_wait_idle"},
+        {"action": "browser_click_text", "text": "请选择配置项", "exact": true},
+        {"action": "browser_wait_idle"}        
+      ],
       "sub_steps": [
-        "打开指控命令菜单"
+        "点击选择下拉菜单中的第一个选项, 然后点击确认"
       ],
       "enabled": true
     },
@@ -234,25 +221,32 @@
       "id": "send_fake_target_with_coords",
       "description": "向平台发送虚假目标（带坐标）",
       "aliases": ["发送虚假目标带坐标", "发送假目标坐标", "虚假目标坐标"],
-      "keywords": ["虚假", "目标", "坐标", "经度", "纬度"],
+      "keywords": ["虚假", "目标", "经度", "纬度"],
       "parameters": [
         {
           "name": "platform_id",
-          "description": "平台编号（整数）",
-          "extract_pattern": "(\\d+)平台|向(\\d+)平台",
+          "description": "平台编号(整数)。支持 '向206发送...' / '206平台' / '201平台' 多种写法",
+          "extract_pattern": "向(\\d+)|(\\d+)平台",
           "required": true,
           "examples": ["201", "206", "301"]
         },
         {
+          "name": "target_name",
+          "description": "虚假目标名称(字母/数字/下划线/连字符)。匹配 '虚假目标ab01' 或 '虚假目标jdb2_light-Hummer-168613679449-0'",
+          "extract_pattern": "虚假目标([A-Za-z0-9_-]+)",
+          "required": true,
+          "examples": ["ab01", "target42", "jdb2_light-Hummer-168613679449-0"]
+        },
+        {
           "name": "longitude",
-          "description": "经度（小数）",
+          "description": "经度(小数)",
           "extract_pattern": "经度([\\d.]+)",
           "required": true,
           "examples": ["75.0871", "120.5", "90.0"]
         },
         {
           "name": "latitude",
-          "description": "纬度（小数）",
+          "description": "纬度(小数)",
           "extract_pattern": "纬度([\\d.]+)",
           "required": true,
           "examples": ["24.6166", "30.5", "45.0"]
@@ -263,9 +257,81 @@
         "输入http://localhost:3000/，进入无人作战指挥系统页面",
         "右键点击{{platform_id}}平台卡片",
         "在弹出的菜单栏中选择虚假目标发送选项",
+        "在弹出的界面输入目标名称{{target_name}}",
         "在弹出的界面输入经度{{longitude}}",
         "输入纬度{{latitude}}",
         "点击发送按钮"
+      ],
+      "enabled": true
+    },
+    {
+      "id": "demo_browser_desktop_mix",
+      "description": "演示:桌面与浏览器动作在同一任务的 sub_steps 中混合穿插(无需 browser_pre_steps,直接在 sub_steps 中插入 browser_* dict)",
+      "aliases": ["演示混合任务", "桌面浏览器混合"],
+      "keywords": ["演示", "混合"],
+      "parameters": [
+        {
+          "name": "keyword",
+          "description": "搜索关键词",
+          "extract_pattern": "搜索([\\w\\u4e00-\\u9fa5]+)",
+          "required": true,
+          "examples": ["playwright", "测试"]
+        }
+      ],
+      "sub_steps": [
+        {"action": "browser_navigate", "url": "http://localhost:3000/"},
+        {"action": "browser_wait_idle"},
+        {"action": "browser_fill", "selector": "#search-box", "value": "{{keyword}}"},
+        {"action": "browser_click", "selector": "#search-btn"},
+        {"action": "browser_wait_selector", "selector": ".results", "state": "visible"},
+        "在桌面打开记事本记录搜索结果",
+        "输入关键词:{{keyword}}"
+      ],
+      "enabled": true
+    },
+    {
+      "id": "demo_param_extract_to_selector",
+      "description": "演示:用 parameters[].extract_pattern 从指令里抽参数,填进 browser selector 的 has-text 里(参数提取场景的典型用法)",
+      "aliases": ["平台确认", "确认平台"],
+      "keywords": ["平台", "确认"],
+      "parameters": [
+        {
+          "name": "platform_id",
+          "description": "平台编号(支持阿拉伯/汉字数字)",
+          "extract_pattern": "any_number",
+          "required": true,
+          "examples": ["206", "201", "三零一"]
+        }
+      ],
+      "sub_steps": [
+        {"action": "browser_navigate", "url": "http://localhost:3000/"},
+        {"action": "browser_wait_idle"},
+        {"action": "browser_click", "selector": "div.platform-card:has-text(\"{{platform_id}}\")"},
+        {"action": "browser_click_text", "text": "确认", "exact": true},
+        {"action": "browser_wait_selector", "selector": ".confirm-dialog", "state": "visible"}
+      ],
+      "enabled": true
+    },
+    {
+      "id": "platform_fix_confirm",
+      "description": "平台定位确认",
+      "aliases": ["平台定位确认", "fix确认", "平台fix确认"],
+      "keywords": ["平台", "确认"],
+      "parameters": [
+        {
+          "name": "platform_id",
+          "description": "平台编号(支持阿拉伯/汉字数字)",
+          "extract_pattern": "执行(.+)平台",
+          "required": true,
+          "examples": ["206", "201", "三零一"]
+        }
+      ],
+      "sub_steps": [
+        {"action": "browser_navigate", "url": "http://localhost:3000/"},
+        {"action": "browser_wait_idle"},
+        {"action": "browser_click", "selector": "div.platform-card:has-text(\"{{platform_id}}\")"},
+        {"action": "browser_click_text", "text": "确认", "exact": true},
+        {"action": "browser_wait_selector", "selector": ".confirm-dialog", "state": "visible"}
       ],
       "enabled": true
     }

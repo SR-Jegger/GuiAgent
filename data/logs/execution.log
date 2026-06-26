@@ -9,3 +9,87 @@
 2026-05-12 14:28:54,481 - websocket - ERROR - [WinError 10061] 由于目标计算机积极拒绝，无法连接。 - goodbye
 2026-05-12 14:29:11,761 - websocket - ERROR - [WinError 10061] 由于目标计算机积极拒绝，无法连接。 - goodbye
 2026-05-12 14:41:41,012 - websocket - ERROR - [WinError 10061] 由于目标计算机积极拒绝，无法连接。 - goodbye
+2026-06-16 11:07:15,762 - utils.browser_tools - INFO - BrowserTools started (headless=True)
+2026-06-16 11:07:43,172 - openai._base_client - INFO - Retrying request to /chat/completions in 0.454042 seconds
+2026-06-16 11:07:45,672 - openai._base_client - INFO - Retrying request to /chat/completions in 0.792467 seconds
+2026-06-16 11:07:51,238 - openai._base_client - INFO - Retrying request to /chat/completions in 0.419767 seconds
+2026-06-16 11:07:53,707 - openai._base_client - INFO - Retrying request to /chat/completions in 0.956530 seconds
+2026-06-16 11:07:59,244 - openai._base_client - INFO - Retrying request to /chat/completions in 0.432241 seconds
+2026-06-16 11:08:01,720 - openai._base_client - INFO - Retrying request to /chat/completions in 0.798203 seconds
+2026-06-16 11:08:07,143 - openai._base_client - INFO - Retrying request to /chat/completions in 0.422113 seconds
+2026-06-16 11:08:09,603 - openai._base_client - INFO - Retrying request to /chat/completions in 0.799330 seconds
+2026-06-16 11:08:14,955 - openai._base_client - INFO - Retrying request to /chat/completions in 0.459697 seconds
+2026-06-16 11:08:17,456 - openai._base_client - INFO - Retrying request to /chat/completions in 0.884150 seconds
+2026-06-16 11:08:22,916 - openai._base_client - INFO - Retrying request to /chat/completions in 0.381886 seconds
+2026-06-16 11:08:25,340 - openai._base_client - INFO - Retrying request to /chat/completions in 0.750536 seconds
+2026-06-16 11:08:30,650 - openai._base_client - INFO - Retrying request to /chat/completions in 0.474399 seconds
+2026-06-16 11:08:33,196 - openai._base_client - INFO - Retrying request to /chat/completions in 0.833741 seconds
+2026-06-16 11:08:38,573 - openai._base_client - INFO - Retrying request to /chat/completions in 0.397854 seconds
+2026-06-16 11:08:41,010 - openai._base_client - INFO - Retrying request to /chat/completions in 0.970777 seconds
+2026-06-16 11:08:46,546 - openai._base_client - INFO - Retrying request to /chat/completions in 0.404925 seconds
+2026-06-16 11:08:48,989 - openai._base_client - INFO - Retrying request to /chat/completions in 0.753488 seconds
+2026-06-16 11:08:54,298 - openai._base_client - INFO - Retrying request to /chat/completions in 0.467200 seconds
+2026-06-16 11:08:56,793 - openai._base_client - INFO - Retrying request to /chat/completions in 0.882218 seconds
+2026-06-16 14:22:03,231 - utils.browser_tools - INFO - BrowserTools started (headless=False)
+2026-06-16 14:22:57,805 - utils.browser_tools - INFO - BrowserTools started (headless=False)
+2026-06-16 14:23:19,011 - utils.browser_tools - INFO - BrowserTools started (headless=False)
+2026-06-16 14:25:31,055 - utils.browser_tools - INFO - BrowserTools started (headless=False)
+2026-06-16 14:34:44,951 - utils.browser_tools - INFO - BrowserTools started (headless=False)
+2026-06-17 15:56:59,685 - nodes.browser_pre_step_node - ERROR - [BROWSER_PRE_STEP] Step 3 (browser_click) failed: Page.click: Timeout 15000ms exceeded.
+Call log:
+  - waiting for locator("text=指控命令")
+
+2026-06-17 16:02:38,609 - nodes.browser_pre_step_node - ERROR - [BROWSER_PRE_STEP] Step 3 (browser_wait_selector) failed: Page.wait_for_selector: Timeout 15000ms exceeded.
+Call log:
+  - waiting for locator(":has-text(\"指控命令\")") to be visible
+
+2026-06-17 16:11:33,568 - nodes.browser_pre_step_node - ERROR - [BROWSER_PRE_STEP] Step 3 (browser_click_text) failed: Locator.click: Timeout 15000ms exceeded.
+Call log:
+  - waiting for get_by_text("指控命令").first
+
+2026-06-17 16:57:18,476 - nodes.browser_pre_step_node - ERROR - [BROWSER_PRE_STEP] Step 3 (browser_click) failed: Page.click: Timeout 15000ms exceeded.
+Call log:
+  - waiting for locator("text=指控命令")
+
+2026-06-18 19:17:51,727 - utils.browser_manager - INFO - BrowserManager: using profile dir C:\Users\PAPERM~1\AppData\Local\Temp\gui_agent_browser_profile
+2026-06-18 19:17:51,728 - utils.browser_manager - INFO - BrowserManager: launching C:\Users\Papermaker\AppData\Local\ms-playwright\chromium-1117\chrome-win\chrome.exe --remote-debugging-port=9222 --remote-debugging-address=127.0.0.1 --no-first-run --no-default-browser-check --disable-background-networking --disable-sync --disable-features=TranslateUI,DialMediaRouteProvider --user-data-dir=C:\Users\PAPERM~1\AppData\Local\Temp\gui_agent_browser_profile
+2026-06-18 19:17:52,896 - utils.browser_manager - INFO - BrowserManager: CDP endpoint ready at http://127.0.0.1:9222
+2026-06-18 19:25:37,467 - utils.browser_manager - INFO - BrowserManager: using profile dir C:\Users\PAPERM~1\AppData\Local\Temp\gui_agent_browser_profile
+2026-06-18 19:25:37,467 - utils.browser_manager - INFO - BrowserManager: launching C:\Users\Papermaker\AppData\Local\ms-playwright\chromium-1117\chrome-win\chrome.exe --remote-debugging-port=9222 --remote-debugging-address=127.0.0.1 --no-first-run --no-default-browser-check --disable-background-networking --disable-sync --disable-features=TranslateUI,DialMediaRouteProvider --user-data-dir=C:\Users\PAPERM~1\AppData\Local\Temp\gui_agent_browser_profile
+2026-06-18 19:25:38,144 - utils.browser_manager - INFO - BrowserManager: CDP endpoint ready at http://127.0.0.1:9222
+2026-06-22 16:30:54,007 - utils.browser_manager - INFO - BrowserManager: using profile dir C:\Users\PAPERM~1\AppData\Local\Temp\gui_agent_browser_profile
+2026-06-22 16:30:54,007 - utils.browser_manager - INFO - BrowserManager: launching C:\Users\Papermaker\AppData\Local\ms-playwright\chromium-1117\chrome-win\chrome.exe --remote-debugging-port=9222 --remote-debugging-address=127.0.0.1 --no-first-run --no-default-browser-check --disable-background-networking --disable-sync --disable-features=TranslateUI,DialMediaRouteProvider --user-data-dir=C:\Users\PAPERM~1\AppData\Local\Temp\gui_agent_browser_profile
+2026-06-22 16:30:55,465 - utils.browser_manager - INFO - BrowserManager: CDP endpoint ready at http://127.0.0.1:9222
+2026-06-22 21:56:23,176 - utils.browser_manager - INFO - BrowserManager: using profile dir C:\Users\PAPERM~1\AppData\Local\Temp\gui_agent_browser_profile
+2026-06-22 21:56:23,177 - utils.browser_manager - INFO - BrowserManager: launching C:\Users\Papermaker\AppData\Local\ms-playwright\chromium-1117\chrome-win\chrome.exe --remote-debugging-port=9222 --remote-debugging-address=127.0.0.1 --no-first-run --no-default-browser-check --disable-background-networking --disable-sync --disable-features=TranslateUI,DialMediaRouteProvider --user-data-dir=C:\Users\PAPERM~1\AppData\Local\Temp\gui_agent_browser_profile
+2026-06-22 21:56:24,305 - utils.browser_manager - INFO - BrowserManager: CDP endpoint ready at http://127.0.0.1:9222
+2026-06-22 22:20:26,866 - utils.browser_manager - INFO - BrowserManager: using profile dir C:\Users\PAPERM~1\AppData\Local\Temp\gui_agent_browser_profile
+2026-06-22 22:20:26,867 - utils.browser_manager - INFO - BrowserManager: launching C:\Users\Papermaker\AppData\Local\ms-playwright\chromium-1117\chrome-win\chrome.exe --remote-debugging-port=9222 --remote-debugging-address=127.0.0.1 --no-first-run --no-default-browser-check --disable-background-networking --disable-sync --disable-features=TranslateUI,DialMediaRouteProvider --user-data-dir=C:\Users\PAPERM~1\AppData\Local\Temp\gui_agent_browser_profile
+2026-06-22 22:20:27,536 - utils.browser_manager - INFO - BrowserManager: CDP endpoint ready at http://127.0.0.1:9222
+2026-06-22 22:28:42,827 - utils.browser_manager - INFO - BrowserManager: using profile dir C:\Users\PAPERM~1\AppData\Local\Temp\gui_agent_browser_profile
+2026-06-22 22:28:42,827 - utils.browser_manager - INFO - BrowserManager: launching C:\Users\Papermaker\AppData\Local\ms-playwright\chromium-1117\chrome-win\chrome.exe --remote-debugging-port=9222 --remote-debugging-address=127.0.0.1 --no-first-run --no-default-browser-check --disable-background-networking --disable-sync --disable-features=TranslateUI,DialMediaRouteProvider --user-data-dir=C:\Users\PAPERM~1\AppData\Local\Temp\gui_agent_browser_profile
+2026-06-22 22:28:43,498 - utils.browser_manager - INFO - BrowserManager: CDP endpoint ready at http://127.0.0.1:9222
+2026-06-22 22:39:15,082 - utils.browser_manager - INFO - BrowserManager: using profile dir C:\Users\PAPERM~1\AppData\Local\Temp\gui_agent_browser_profile
+2026-06-22 22:39:15,082 - utils.browser_manager - INFO - BrowserManager: launching C:\Users\Papermaker\AppData\Local\ms-playwright\chromium-1117\chrome-win\chrome.exe --remote-debugging-port=9222 --remote-debugging-address=127.0.0.1 --no-first-run --no-default-browser-check --disable-background-networking --disable-sync --disable-features=TranslateUI,DialMediaRouteProvider --user-data-dir=C:\Users\PAPERM~1\AppData\Local\Temp\gui_agent_browser_profile
+2026-06-22 22:39:15,681 - utils.browser_manager - INFO - BrowserManager: CDP endpoint ready at http://127.0.0.1:9222
+2026-06-22 22:55:53,855 - utils.browser_manager - INFO - BrowserManager: using profile dir C:\Users\PAPERM~1\AppData\Local\Temp\gui_agent_browser_profile
+2026-06-22 22:55:53,855 - utils.browser_manager - INFO - BrowserManager: launching C:\Users\Papermaker\AppData\Local\ms-playwright\chromium-1117\chrome-win\chrome.exe --remote-debugging-port=9222 --remote-debugging-address=127.0.0.1 --no-first-run --no-default-browser-check --disable-background-networking --disable-sync --disable-features=TranslateUI,DialMediaRouteProvider --user-data-dir=C:\Users\PAPERM~1\AppData\Local\Temp\gui_agent_browser_profile
+2026-06-22 22:55:54,425 - utils.browser_manager - INFO - BrowserManager: CDP endpoint ready at http://127.0.0.1:9222
+2026-06-22 22:57:06,143 - utils.browser_manager - INFO - BrowserManager: using profile dir C:\Users\PAPERM~1\AppData\Local\Temp\gui_agent_browser_profile
+2026-06-22 22:57:06,146 - utils.browser_manager - INFO - BrowserManager: launching C:\Users\Papermaker\AppData\Local\ms-playwright\chromium-1117\chrome-win\chrome.exe --remote-debugging-port=9222 --remote-debugging-address=127.0.0.1 --no-first-run --no-default-browser-check --disable-background-networking --disable-sync --disable-features=TranslateUI,DialMediaRouteProvider --user-data-dir=C:\Users\PAPERM~1\AppData\Local\Temp\gui_agent_browser_profile
+2026-06-22 22:57:06,676 - utils.browser_manager - INFO - BrowserManager: CDP endpoint ready at http://127.0.0.1:9222
+2026-06-22 23:19:48,423 - utils.browser_manager - INFO - BrowserManager: using profile dir C:\Users\PAPERM~1\AppData\Local\Temp\gui_agent_browser_profile
+2026-06-22 23:19:48,424 - utils.browser_manager - INFO - BrowserManager: launching C:\Users\Papermaker\AppData\Local\ms-playwright\chromium-1117\chrome-win\chrome.exe --remote-debugging-port=9222 --remote-debugging-address=127.0.0.1 --no-first-run --no-default-browser-check --disable-background-networking --disable-sync --disable-features=TranslateUI,DialMediaRouteProvider --user-data-dir=C:\Users\PAPERM~1\AppData\Local\Temp\gui_agent_browser_profile
+2026-06-22 23:19:48,985 - utils.browser_manager - INFO - BrowserManager: CDP endpoint ready at http://127.0.0.1:9222
+2026-06-22 23:28:41,419 - utils.browser_manager - INFO - BrowserManager: using profile dir C:\Users\PAPERM~1\AppData\Local\Temp\gui_agent_browser_profile
+2026-06-22 23:28:41,420 - utils.browser_manager - INFO - BrowserManager: launching C:\Users\Papermaker\AppData\Local\ms-playwright\chromium-1117\chrome-win\chrome.exe --remote-debugging-port=9222 --remote-debugging-address=127.0.0.1 --no-first-run --no-default-browser-check --disable-background-networking --disable-sync --disable-features=TranslateUI,DialMediaRouteProvider --user-data-dir=C:\Users\PAPERM~1\AppData\Local\Temp\gui_agent_browser_profile
+2026-06-22 23:28:41,969 - utils.browser_manager - INFO - BrowserManager: CDP endpoint ready at http://127.0.0.1:9222
+2026-06-23 16:23:30,996 - utils.browser_manager - INFO - BrowserManager: using profile dir C:\Users\PAPERM~1\AppData\Local\Temp\gui_agent_browser_profile
+2026-06-23 16:23:30,996 - utils.browser_manager - INFO - BrowserManager: launching C:\Users\Papermaker\AppData\Local\ms-playwright\chromium-1117\chrome-win\chrome.exe --remote-debugging-port=9222 --remote-debugging-address=127.0.0.1 --no-first-run --no-default-browser-check --disable-background-networking --disable-sync --disable-features=TranslateUI,DialMediaRouteProvider --user-data-dir=C:\Users\PAPERM~1\AppData\Local\Temp\gui_agent_browser_profile
+2026-06-23 16:23:32,127 - utils.browser_manager - INFO - BrowserManager: CDP endpoint ready at http://127.0.0.1:9222
+2026-06-25 15:27:23,902 - utils.browser_runtime - INFO - [BROWSER_RUNTIME] Launching BrowserTools ...
+2026-06-25 15:27:35,409 - utils.browser_tools - INFO - BrowserTools started (headless=False)
+2026-06-25 15:27:42,265 - httpx - INFO - HTTP Request: POST https://llm-qacrzo6nxgnrlngm.cn-beijing.maas.aliyuncs.com/compatible-mode/v1/chat/completions "HTTP/1.1 200 OK"
+2026-06-26 10:33:39,700 - utils.browser_manager - INFO - BrowserManager: using profile dir C:\Users\PAPERM~1\AppData\Local\Temp\gui_agent_browser_profile
+2026-06-26 10:33:39,700 - utils.browser_manager - INFO - BrowserManager: launching C:\Users\Papermaker\AppData\Local\ms-playwright\chromium-1117\chrome-win\chrome.exe --remote-debugging-port=9222 --remote-debugging-address=127.0.0.1 --no-first-run --no-default-browser-check --disable-background-networking --disable-sync --disable-features=TranslateUI,DialMediaRouteProvider --user-data-dir=C:\Users\PAPERM~1\AppData\Local\Temp\gui_agent_browser_profile
+2026-06-26 10:33:40,870 - utils.browser_manager - INFO - BrowserManager: CDP endpoint ready at http://127.0.0.1:9222

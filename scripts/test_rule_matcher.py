@@ -18,7 +18,7 @@ if sys.platform == 'win32':
 # 添加项目根目录到路径
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from rule_matcher import RuleMatcher
+from learning.rule_matcher import RuleMatcher
 
 
 def test_basic_match():

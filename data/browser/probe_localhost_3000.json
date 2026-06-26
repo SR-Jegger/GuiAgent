@@ -1,0 +1,418 @@
+[
+  {
+    "agent_id": 0,
+    "tag": "button",
+    "type": "",
+    "role": "menuitem",
+    "name": "兵力管理",
+    "css": "div:nth-of-type(1) > div.dashboard > nav.top-nav > div.nav-buttons:nth-of-type(2) > button:nth-of-type(1)",
+    "id": "",
+    "testid": "",
+    "bbox": [
+      788,
+      0,
+      81,
+      35
+    ]
+  },
+  {
+    "agent_id": 1,
+    "tag": "button",
+    "type": "",
+    "role": "menuitem",
+    "name": "任务规划",
+    "css": "div:nth-of-type(1) > div.dashboard > nav.top-nav > div.nav-buttons:nth-of-type(2) > button:nth-of-type(2)",
+    "id": "",
+    "testid": "",
+    "bbox": [
+      877,
+      0,
+      81,
+      35
+    ]
+  },
+  {
+    "agent_id": 2,
+    "tag": "button",
+    "type": "",
+    "role": "menuitem",
+    "name": "通信",
+    "css": "div:nth-of-type(1) > div.dashboard > nav.top-nav > div.nav-buttons:nth-of-type(2) > button:nth-of-type(3)",
+    "id": "",
+    "testid": "",
+    "bbox": [
+      966,
+      0,
+      55,
+      35
+    ]
+  },
+  {
+    "agent_id": 3,
+    "tag": "button",
+    "type": "",
+    "role": "menuitem",
+    "name": "指控指令",
+    "css": "div:nth-of-type(1) > div.dashboard > nav.top-nav > div.nav-buttons:nth-of-type(2) > button:nth-of-type(4)",
+    "id": "",
+    "testid": "",
+    "bbox": [
+      1029,
+      0,
+      81,
+      35
+    ]
+  },
+  {
+    "agent_id": 4,
+    "tag": "button",
+    "type": "",
+    "role": "menuitem",
+    "name": "AI 分析",
+    "css": "div:nth-of-type(1) > div.dashboard > nav.top-nav > div.nav-buttons:nth-of-type(2) > button:nth-of-type(5)",
+    "id": "",
+    "testid": "",
+    "bbox": [
+      1118,
+      0,
+      71,
+      35
+    ]
+  },
+  {
+    "agent_id": 5,
+    "tag": "button",
+    "type": "",
+    "role": "menuitem",
+    "name": "设置",
+    "css": "div:nth-of-type(1) > div.dashboard > nav.top-nav > div.nav-buttons:nth-of-type(2) > button:nth-of-type(6)",
+    "id": "",
+    "testid": "",
+    "bbox": [
+      1197,
+      0,
+      55,
+      35
+    ]
+  },
+  {
+    "agent_id": 6,
+    "tag": "div",
+    "type": "",
+    "role": "",
+    "name": "+ − Leaflet | 高德地图",
+    "css": "div.dashboard > main.main-area > div.map-view:nth-of-type(2) > div > div.leaflet-container.leaflet-touch",
+    "id": "",
+    "testid": "",
+    "bbox": [
+      234,
+      36,
+      804,
+      500
+    ]
+  },
+  {
+    "agent_id": 7,
+    "tag": "img",
+    "type": "",
+    "role": "button",
+    "name": "Marker",
+    "css": "div > div.leaflet-container.leaflet-touch > div.leaflet-pane.leaflet-map-pane:nth-of-type(1) > div.leaflet-pane.leaflet-marker-pane:nth-of-type(4) > img.leaflet-marker-icon.leaflet-zoom-animated:nth-of-type(1)",
+    "id": "",
+    "testid": "",
+    "bbox": [
+      603,
+      249,
+      36,
+      36
+    ]
+  },
+  {
+    "agent_id": 8,
+    "tag": "img",
+    "type": "",
+    "role": "button",
+    "name": "Marker",
+    "css": "div > div.leaflet-container.leaflet-touch > div.leaflet-pane.leaflet-map-pane:nth-of-type(1) > div.leaflet-pane.leaflet-marker-pane:nth-of-type(4) > img.leaflet-marker-icon.leaflet-zoom-animated:nth-of-type(2)",
+    "id": "",
+    "testid": "",
+    "bbox": [
+      632,
+      268,
+      36,
+      36
+    ]
+  },
+  {
+    "agent_id": 9,
+    "tag": "img",
+    "type": "",
+    "role": "button",
+    "name": "Marker",
+    "css": "div > div.leaflet-container.leaflet-touch > div.leaflet-pane.leaflet-map-pane:nth-of-type(1) > div.leaflet-pane.leaflet-marker-pane:nth-of-type(4) > img.leaflet-marker-icon.leaflet-zoom-animated:nth-of-type(3)",
+    "id": "",
+    "testid": "",
+    "bbox": [
+      581,
+      287,
+      36,
+      36
+    ]
+  },
+  {
+    "agent_id": 10,
+    "tag": "img",
+    "type": "",
+    "role": "button",
+    "name": "Marker",
+    "css": "div > div.leaflet-container.leaflet-touch > div.leaflet-pane.leaflet-map-pane:nth-of-type(1) > div.leaflet-pane.leaflet-marker-pane:nth-of-type(4) > img.leaflet-marker-icon.leaflet-zoom-animated:nth-of-type(4)",
+    "id": "",
+    "testid": "",
+    "bbox": [
+      618,
+      306,
+      36,
+      36
+    ]
+  },
+  {
+    "agent_id": 11,
+    "tag": "a",
+    "type": "",
+    "role": "button",
+    "name": "Zoom in",
+    "css": "div.leaflet-container.leaflet-touch > div.leaflet-control-container:nth-of-type(2) > div.leaflet-top.leaflet-left:nth-of-type(1) > div.leaflet-control-zoom.leaflet-bar > a.leaflet-control-zoom-in:nth-of-type(1)",
+    "id": "",
+    "testid": "",
+    "bbox": [
+      246,
+      48,
+      30,
+      31
+    ]
+  },
+  {
+    "agent_id": 12,
+    "tag": "a",
+    "type": "",
+    "role": "button",
+    "name": "Zoom out",
+    "css": "div.leaflet-container.leaflet-touch > div.leaflet-control-container:nth-of-type(2) > div.leaflet-top.leaflet-left:nth-of-type(1) > div.leaflet-control-zoom.leaflet-bar > a.leaflet-control-zoom-out:nth-of-type(2)",
+    "id": "",
+    "testid": "",
+    "bbox": [
+      246,
+      79,
+      30,
+      30
+    ]
+  },
+  {
+    "agent_id": 13,
+    "tag": "a",
+    "type": "",
+    "role": "",
+    "name": "A JavaScript library for interactive maps",
+    "css": "div.leaflet-container.leaflet-touch > div.leaflet-control-container:nth-of-type(2) > div.leaflet-bottom.leaflet-right:nth-of-type(4) > div.leaflet-control-attribution.leaflet-control > a",
+    "id": "",
+    "testid": "",
+    "bbox": [
+      924,
+      521,
+      51,
+      14
+    ]
+  },
+  {
+    "agent_id": 14,
+    "tag": "button",
+    "type": "",
+    "role": "",
+    "name": "🔹 创建编队",
+    "css": "div.dashboard > section.drone-bar:nth-of-type(1) > div.filter:nth-of-type(1) > div > button:nth-of-type(1)",
+    "id": "",
+    "testid": "",
+    "bbox": [
+      1046,
+      547,
+      97,
+      31
+    ]
+  },
+  {
+    "agent_id": 15,
+    "tag": "button",
+    "type": "",
+    "role": "",
+    "name": "➕ 添加无人机",
+    "css": "div.dashboard > section.drone-bar:nth-of-type(1) > div.filter:nth-of-type(1) > div > button:nth-of-type(2)",
+    "id": "",
+    "testid": "",
+    "bbox": [
+      1152,
+      547,
+      110,
+      31
+    ]
+  },
+  {
+    "agent_id": 16,
+    "tag": "div",
+    "type": "",
+    "role": "button",
+    "name": "无人机 F22-206, 状态：巡航",
+    "css": "div:nth-of-type(1) > div.dashboard > section.drone-bar:nth-of-type(1) > div.drone-cards:nth-of-type(2) > div.drone-card:nth-of-type(1)",
+    "id": "",
+    "testid": "",
+    "bbox": [
+      10,
+      588,
+      177,
+      135
+    ]
+  },
+  {
+    "agent_id": 17,
+    "tag": "div",
+    "type": "",
+    "role": "button",
+    "name": "无人机 F35-301, 状态：作战",
+    "css": "div:nth-of-type(1) > div.dashboard > section.drone-bar:nth-of-type(1) > div.drone-cards:nth-of-type(2) > div.drone-card:nth-of-type(2)",
+    "id": "",
+    "testid": "",
+    "bbox": [
+      197,
+      588,
+      177,
+      135
+    ]
+  },
+  {
+    "agent_id": 18,
+    "tag": "div",
+    "type": "",
+    "role": "button",
+    "name": "无人机 J20-112, 状态：待命",
+    "css": "div:nth-of-type(1) > div.dashboard > section.drone-bar:nth-of-type(1) > div.drone-cards:nth-of-type(2) > div.drone-card:nth-of-type(3)",
+    "id": "",
+    "testid": "",
+    "bbox": [
+      384,
+      588,
+      177,
+      135
+    ]
+  },
+  {
+    "agent_id": 19,
+    "tag": "div",
+    "type": "",
+    "role": "button",
+    "name": "无人机 F22-207, 状态：故障",
+    "css": "div:nth-of-type(1) > div.dashboard > section.drone-bar:nth-of-type(1) > div.drone-cards:nth-of-type(2) > div.drone-card:nth-of-type(4)",
+    "id": "",
+    "testid": "",
+    "bbox": [
+      572,
+      588,
+      177,
+      135
+    ]
+  },
+  {
+    "agent_id": 20,
+    "tag": "div",
+    "type": "",
+    "role": "button",
+    "name": "任务 打击任务 -01, 状态：交战",
+    "css": "div:nth-of-type(1) > div.dashboard > section.mission-panel:nth-of-type(2) > div.mission-cards > div.mission-card:nth-of-type(1)",
+    "id": "",
+    "testid": "",
+    "bbox": [
+      10,
+      783,
+      227,
+      186
+    ]
+  },
+  {
+    "agent_id": 21,
+    "tag": "div",
+    "type": "",
+    "role": "button",
+    "name": "任务 侦察任务 -02, 状态：跟踪",
+    "css": "div:nth-of-type(1) > div.dashboard > section.mission-panel:nth-of-type(2) > div.mission-cards > div.mission-card:nth-of-type(2)",
+    "id": "",
+    "testid": "",
+    "bbox": [
+      247,
+      783,
+      227,
+      186
+    ]
+  },
+  {
+    "agent_id": 22,
+    "tag": "div",
+    "type": "",
+    "role": "button",
+    "name": "任务 封锁任务 -03, 状态：评估",
+    "css": "div:nth-of-type(1) > div.dashboard > section.mission-panel:nth-of-type(2) > div.mission-cards > div.mission-card:nth-of-type(3)",
+    "id": "",
+    "testid": "",
+    "bbox": [
+      484,
+      783,
+      227,
+      186
+    ]
+  },
+  {
+    "agent_id": 23,
+    "tag": "button",
+    "type": "",
+    "role": "",
+    "name": "Expand history",
+    "css": "body > div._wrapper_gtdpc_1:nth-of-type(2) > div._header_gtdpc_99:nth-of-type(3) > div._controls_gtdpc_188:nth-of-type(2) > button._controlButton_gtdpc_193.undefined:nth-of-type(1)",
+    "id": "",
+    "testid": "",
+    "bbox": [
+      752,
+      588,
+      24,
+      24
+    ]
+  },
+  {
+    "agent_id": 24,
+    "tag": "button",
+    "type": "",
+    "role": "",
+    "name": "Close",
+    "css": "body > div._wrapper_gtdpc_1:nth-of-type(2) > div._header_gtdpc_99:nth-of-type(3) > div._controls_gtdpc_188:nth-of-type(2) > button._controlButton_gtdpc_193._stopButton_gtdpc_212:nth-of-type(2)",
+    "id": "",
+    "testid": "",
+    "bbox": [
+      780,
+      588,
+      24,
+      24
+    ]
+  },
+  {
+    "agent_id": 25,
+    "tag": "input",
+    "type": "text",
+    "role": "",
+    "name": "Enter new task, describe steps in detail, press Enter to submit",
+    "css": "body > div._wrapper_gtdpc_1:nth-of-type(2) > div._inputSectionWrapper_gtdpc_539:nth-of-type(4) > div._inputSection_gtdpc_539 > input._taskInput_gtdpc_573",
+    "id": "",
+    "testid": "",
+    "bbox": [
+      478,
+      630,
+      317,
+      28
+    ]
+  }
+]

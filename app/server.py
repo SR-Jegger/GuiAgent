@@ -43,6 +43,9 @@ class TaskRequest(BaseModel):
     rules_dir: str = "./rules"
     use_intent_mapping: bool = False  # 是否启用意图映射模式
     intent_mapping_config_path: Optional[str] = None  # 自定义映射配置路径
+    semantic_matched_id: Optional[str] = None  # 直接指定 mapping ID（跳过匹配）
+    semantic_parameters: Optional[Dict[str, Any]] = None  # 预提取的参数
+    input_images: Optional[list[str]] = None  # 用户提供的图片（base64 data URI 或 HTTP URL）
 
 
 class TaskResponse(BaseModel):
@@ -185,6 +188,9 @@ def create_app() -> FastAPI:
             rules_dir=request.rules_dir,
             use_intent_mapping=request.use_intent_mapping,
             intent_mapping_config_path=request.intent_mapping_config_path,
+            semantic_matched_id=request.semantic_matched_id,
+            semantic_parameters=request.semantic_parameters,
+            input_images=request.input_images,
         )
 
         status = await agent_service.get_task_status(task_id)

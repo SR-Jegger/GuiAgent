@@ -1,6 +1,13 @@
 {
     "name": "虚假目标流程模板",
     "description": "每个平台执行的指令序列",
+    "pre_commands": [
+        {
+            "label": "发送区域目标", 
+            "instruction": "发送区域目标", 
+            "wait_after": 5
+        }
+    ],
     "commands": [
         {
             "label": "虚假目标",

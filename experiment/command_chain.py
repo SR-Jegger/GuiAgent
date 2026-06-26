@@ -19,6 +19,13 @@ import time
 from pathlib import Path
 from typing import Dict, List, Optional
 
+# Resolve project root from this file's location so the chain executor works
+# regardless of the current working directory. Without this, opening
+# "nodes/model_config.json" relative to CWD fails when the script is launched
+# from outside the GuiAgent root.
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+MODEL_CONFIG_PATH = PROJECT_ROOT / "nodes" / "model_config.json"
+
 
 class ChainConfig:
     """Command chain configuration."""
@@ -63,8 +70,16 @@ class ChainExecutor:
             from app.services import AgentApplicationService
             from app.semantic.semantic_matcher import HybridMatcher
 
-            # 加载模型配置
-            model_config = json.load(open("nodes/model_config.json"))
+            # Load model config via absolute path so the executor works from
+            # any CWD. Falls back gracefully if the file is missing.
+            try:
+                with open(MODEL_CONFIG_PATH, "r", encoding="utf-8") as f:
+                    model_config = json.load(f)
+            except FileNotFoundError:
+                raise FileNotFoundError(
+                    f"Model config not found at {MODEL_CONFIG_PATH}. "
+                    "Ensure the GuiAgent project root contains nodes/model_config.json."
+                )
             model_cfg = model_config.get("models", {}).get("gemma4_e4b", {})
 
             # 初始化 semantic matcher（和卡片一样）
@@ -76,7 +91,9 @@ class ChainExecutor:
                 show_entry_card=False,
                 use_semantic_match=False,  # 我们自己处理 semantic match
             )
-            await self._service.initialize()
+            # Pass the absolute config path so the service's own loader
+            # (application_service.py:initialize) also works from any CWD.
+            await self._service.initialize(config_path=str(MODEL_CONFIG_PATH))
 
     async def run_command(
         self,
