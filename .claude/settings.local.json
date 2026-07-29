@@ -15,7 +15,9 @@
       "Bash(rm /tmp/test_export.json /tmp/test_rule.json)",
       "Bash(PYTHONIOENCODING=utf-8 python -m pytest tests/ scripts/test_main_entry_card.py --collect-only)",
       "Bash(PYTHONIOENCODING=utf-8 python -m pytest tests/)",
-      "Bash(echo \"exit: $?\")"
+      "Bash(echo \"exit: $?\")",
+      "Bash(grep -n \"GuiAgent_update\\\\|GuiAgent\\\\\\\\\\\\\\\\app\" \"C:/Users/Papermaker/.claude/plans/zazzy-tickling-shell.md\")",
+      "Bash(grep -E \"^run_|^app\\\\.py$|^main\\\\.py$|^server\\\\.py$\")"
     ]
   },
   "python": {

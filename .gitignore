@@ -3,7 +3,7 @@
 
 # Model files (large)
 models/
-
+srj_data/
 # Python cache
 __pycache__/
 .ruff_cache/

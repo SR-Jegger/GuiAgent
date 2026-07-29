@@ -490,6 +490,7 @@ async def run_agent_async(
     intent_mapping_config_path: Optional[str] = None,  # 映射配置路径
     semantic_matched_id: Optional[str] = None,  # 语义匹配的 ID
     semantic_parameters: Optional[dict] = None,  # 语义匹配提取的参数
+    semantic_matches: Optional[list[dict]] = None,  # @path 逐行语义匹配结果
     input_images: Optional[list[str]] = None,  # 用户提供的图片（base64 data URI 或 HTTP URL）
     # Browser pre-step parameters
     browser_pre_steps: Optional[list[dict]] = None,
@@ -527,15 +528,22 @@ async def run_agent_async(
     print("=" * 60)
 
     # Auto-extract browser_pre_steps from intent mapping if not explicitly provided
-    if not browser_pre_steps and (semantic_matched_id or instruction):
+    if not browser_pre_steps and (semantic_matched_id or semantic_matches or instruction):
         try:
             from nodes.task_decomposer_node import IntentMappingConfig
-            config = IntentMappingConfig(intent_mapping_config_path or "data/intent_mappings.json")
+            config = IntentMappingConfig(intent_mapping_config_path or "data/mappings")
             mapping = None
             # Priority 1: exact ID match from semantic/voice matcher
             if semantic_matched_id:
                 mapping = config.get_mapping_by_id(semantic_matched_id)
-            # Priority 2: keyword-based match against instruction text
+            # Priority 2: first matched line from @path per-line matching
+            if not mapping and semantic_matches:
+                for m in semantic_matches:
+                    if m.get("is_matched") and m.get("matched_id"):
+                        mapping = config.get_mapping_by_id(m["matched_id"])
+                        if mapping:
+                            break
+            # Priority 3: keyword-based match against instruction text
             if not mapping:
                 result = config.match(instruction)
                 if result:
@@ -575,9 +583,10 @@ async def run_agent_async(
         "add_info": add_info,
         "rules_dir": rules_dir,
         "use_intent_mapping": use_intent_mapping,
-        "intent_mapping_config_path": intent_mapping_config_path or "data/intent_mappings.json",
+        "intent_mapping_config_path": intent_mapping_config_path or "data/mappings",
         "semantic_matched_id": semantic_matched_id,  # 语义匹配结果
         "semantic_parameters": semantic_parameters or {},  # 语义匹配参数
+        "semantic_matches": semantic_matches,  # @path 逐行匹配结果
         "input_images": input_images,  # 用户提供的图片
         "step_id": 0,
         "screenshot_path": "",

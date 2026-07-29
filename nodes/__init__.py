@@ -24,5 +24,4 @@ __all__ = [
     "template_match_node",
     "task_decomposer_node",
     "browser_pre_step_node",
-    "test_modle",
 ]

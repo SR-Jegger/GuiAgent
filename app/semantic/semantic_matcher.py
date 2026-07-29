@@ -15,10 +15,15 @@ from dataclasses import dataclass, field
 # ============================================================================
 
 CHINESE_NUM_MAP = {
-    "零": 0, "一": 1, "幺": 1, "二": 2, "三": 3, "四": 4,
+    "零": 0, "一": 1, "幺": 1, "二": 2, "两": 2, "三": 3, "四": 4,
     "五": 5, "六": 6, "七": 7, "八": 8, "九": 9,
     "十": 10, "百": 100, "千": 1000, "万": 10000,
 }
+
+# 归一化扫描时识别的汉字数字字符集（含"两"和"点"小数分隔）。
+# 与 CHINESE_NUM_MAP 的差异：多一个"点"用于小数衔接，扫描时一起捕获。
+_NUMERAL_SCAN_CHARS = "零一幺二两三四五六七八九十百千万点"
+_NUMERAL_RUN_RE = re.compile(f"[{_NUMERAL_SCAN_CHARS}]+")
 
 
 def chinese_to_number(chinese_num: str) -> Optional[int]:
@@ -80,16 +85,164 @@ def chinese_to_number(chinese_num: str) -> Optional[int]:
     return result
 
 
-def extract_number_from_text(text: str, patterns: str) -> Optional[str]:
-    """
-    从文本中提取数字（支持阿拉伯数字和汉字数字）。
+def normalize_chinese_numerals(text: str) -> str:
+    """把文本中的汉字数字子串转成阿拉伯数字。
+
+    覆盖 ASR 常见读法：
+    - 逐位读法："八六八六" -> "8686"、"幺两零六" -> "1206"
+    - 复合读法："二百零六" -> "206"、"一百零一" -> "101"、"二十三" -> "23"
+    - 含小数："九十点五九四" -> "90.594"、"零点五" -> "0.5"
+    - "两" -> "2"、"幺" -> "1"
+
+    转换失败的子串保留原样，不破坏原文。非数字汉字（如"打击"、"目标"）不受影响。
 
     Args:
-        text: 输入文本
+        text: 原始文本（通常是 ASR 转写结果）
+
+    Returns:
+        汉字数字已替换为阿拉伯数字的文本
+    """
+    if not text:
+        return text
+    return _NUMERAL_RUN_RE.sub(lambda m: _convert_numeral_run(m.group(0)), text)
+
+
+def _convert_numeral_run(run: str) -> str:
+    """转换单个汉字数字子串（可能含"点"小数分隔）为阿拉伯数字字符串。
+
+    转换失败时返回原子串原文，保证不破坏原文。
+    """
+    if not run:
+        return run
+
+    # 整个 run 不含任何真实数字字符（只是"点"等分隔符），保留原文。
+    # 避免把"打点击"里的"点"误转成"."。
+    if not any(c in CHINESE_NUM_MAP for c in run):
+        return run
+
+    # 按"点"分割，分别转换。空段（如"点五"首段）保留为空字符串，
+    # join 后自然形成 ".5" 形式，下游 [\d.]+ 正则仍可命中。
+    parts = run.split("点")
+    converted_parts: list[str] = []
+    for part in parts:
+        if not part:
+            converted_parts.append("")
+            continue
+        # 含未知字符（不在 CHINESE_NUM_MAP），整体回退保留原文
+        if not all(c in CHINESE_NUM_MAP for c in part):
+            return run
+        num = chinese_to_number(part)
+        if num is None:
+            return run
+        converted_parts.append(str(num))
+
+    return ".".join(converted_parts)
+
+
+# ============================================================================
+# 打击方式同义词归一化
+# ============================================================================
+
+_strike_alias_map_cache: Dict[str, str] | None = None
+_strike_sorted_aliases_cache: List[str] | None = None
+
+
+def _load_strike_alias_map(path: str = "data/strike_mode_aliases.json") -> Dict[str, str]:
+    """加载打击方式同义词配置，返回 alias -> target 字典（含 target 自身映射）。
+
+    JSON 格式：
+      {
+        "金地打击":  ["金地自杀", ...],
+        "KVD打击":  ["KVD", ...],
+        "远火打击": ["远火", "远程火箭", ...]
+      }
+
+    key 是归一化目标（ASCII 字面或页面字面），value 是同义词列表。
+    下划线开头的 key（如 _comment）跳过。加载失败返回空 dict。
+
+    target 自身也加入 alias_map（target -> target），避免 target 被部分 alias
+    拆开：例 target "远火打击" + alias "远火"，用户输入 "远火打击" 时左到右
+    最长匹配先命中 4 字的 "远火打击"（target 自身），i 跳过 4 字，不会先匹配
+    "远火" 替换成 "远火打击" 再剩 "打击" 导致 "远火打击打击"。
+    """
+    global _strike_alias_map_cache, _strike_sorted_aliases_cache
+    if _strike_alias_map_cache is not None:
+        return _strike_alias_map_cache
+    aliases: Dict[str, List[str]] = {}
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        aliases = {
+            k: v for k, v in data.items()
+            if not k.startswith("_") and isinstance(v, list)
+        }
+    except Exception as e:
+        print(f"[normalize_strike_mode] 加载 {path} 失败: {e}, 使用空表")
+        aliases = {}
+    alias_map = {alias: target for target, alist in aliases.items() for alias in alist if alias}
+    for target in aliases.keys():
+        if target and target not in alias_map:
+            alias_map[target] = target
+    _strike_alias_map_cache = alias_map
+    _strike_sorted_aliases_cache = sorted(alias_map.keys(), key=len, reverse=True)
+    return _strike_alias_map_cache
+
+
+def normalize_strike_mode(text: str) -> str:
+    """把打击方式的别名/念法归一化成页面字面（金地打击/KVD打击/远火打击）。
+
+    覆盖 ASR 常见读法（别名表见 data/strike_mode_aliases.json）：
+    - 完整名："金地自杀" -> "金地打击"
+    - 缩写："KVD" -> "KVD打击"、"远火" -> "远火打击"
+
+    匹配策略：左到右扫描 + 最长匹配。每个位置尝试所有 alias（按长度降序），
+    命中最长的 alias 整体替换为 target，i 跳过 alias 长度继续。这样：
+    - 长同义词优先于短同义词
+    - target 自身不会被部分 alias 拆开（"远火打击" 不会被 "远火" 拆成 "远火打击打击"）
+    - 一段文本里多次出现同义词都能正确替换
+
+    幂等：已归一化的字面（金地打击/KVD打击）命中 target 自身映射，
+    替换为自己，重复调用不变。
+
+    Args:
+        text: 原始文本（通常是 ASR 转写结果，已过 normalize_chinese_numerals）
+
+    Returns:
+        打击方式关键词已归一化为页面字面的文本
+    """
+    if not text:
+        return text
+    alias_map = _load_strike_alias_map()
+    if not alias_map:
+        return text
+    sorted_aliases = _strike_sorted_aliases_cache or []
+    result_chars: list[str] = []
+    i = 0
+    n = len(text)
+    while i < n:
+        matched = False
+        for alias in sorted_aliases:
+            if text.startswith(alias, i):
+                result_chars.append(alias_map[alias])
+                i += len(alias)
+                matched = True
+                break
+        if not matched:
+            result_chars.append(text[i])
+            i += 1
+    return "".join(result_chars)
+
+
+def extract_number_from_text(text: str, patterns: str) -> Optional[str]:
+    """
+    从文本中提取数字（前置 normalize_chinese_numerals 已将汉字数字转阿拉伯）。
+
+    Args:
+        text: 输入文本（应已归一化）
         patterns: 正则表达式模式（多个用 | 分隔）
 
     Returns:
-        提取的数字字符串（阿拉伯数字格式）
+        提取的数字字符串，未命中返回 None
     """
     pattern_list = patterns.split("|")
 
@@ -97,12 +250,9 @@ def extract_number_from_text(text: str, patterns: str) -> Optional[str]:
         try:
             match = re.search(pattern, text, re.IGNORECASE)
             if match:
+                # 优先取第一个非空捕获组
                 for group in match.groups():
                     if group:
-                        if all(c in CHINESE_NUM_MAP.keys() for c in group):
-                            converted = chinese_to_number(group)
-                            if converted is not None:
-                                return str(converted)
                         return group
         except re.error:
             continue
@@ -114,29 +264,77 @@ def extract_number_from_text(text: str, patterns: str) -> Optional[str]:
 # 统一配置加载
 # ============================================================================
 
-def load_intent_mappings(config_path: str = "data/intent_mappings.json") -> Dict[str, Dict]:
+def load_intent_mappings(config_path: str = "data/mappings") -> Dict[str, Dict]:
     """
     加载统一的意图映射配置（包含语义信息和执行步骤）。
 
+    支持两种模式：
+    - 目录：扫描 *.json 按文件名升序合并，同 id 后者覆盖前者（last-wins + WARNING）
+    - 单文件：原行为
+
     Args:
-        config_path: 配置文件路径
+        config_path: 配置文件或目录路径
 
     Returns:
         Dict[id, mapping] - 以 id 为键的映射字典
     """
     if not os.path.exists(config_path):
-        print(f"[SemanticMatcher] 配置文件不存在: {config_path}")
+        print(f"[SemanticMatcher] 配置路径不存在: {config_path}")
         return {}
 
     try:
-        with open(config_path, "r", encoding="utf-8") as f:
-            data = json.load(f)
+        items: List[tuple] = []  # [(mapping_dict, source_file), ...]
+        file_count = 0
 
-        mappings = data.get("mappings", [])
-        # 只加载启用的映射
-        enabled_mappings = {m["id"]: m for m in mappings if m.get("enabled", True)}
+        if os.path.isdir(config_path):
+            json_files = sorted(
+                f for f in os.listdir(config_path) if f.endswith(".json")
+            )
+            for fname in json_files:
+                fpath = os.path.join(config_path, fname)
+                try:
+                    with open(fpath, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                except Exception as e:
+                    print(f"[SemanticMatcher] 加载文件 {fname} 失败: {e}")
+                    continue
+                file_count += 1
+                for m in data.get("mappings", []):
+                    items.append((m, fname))
+            if not items:
+                print(f"[SemanticMatcher] 目录无可用 .json: {config_path}")
+                return {}
+        else:
+            with open(config_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            file_count = 1
+            source_file = os.path.basename(config_path)
+            for m in data.get("mappings", []):
+                items.append((m, source_file))
 
-        print(f"[SemanticMatcher] 加载了 {len(enabled_mappings)} 个启用的意图映射")
+        # 合并：enabled 过滤 + id 去重（first-wins + WARNING，低数字文件优先）
+        enabled_mappings: Dict[str, Dict] = {}
+        duplicates = 0
+        for mapping, source in items:
+            if not mapping.get("enabled", True):
+                continue
+            mapping_id = mapping.get("id")
+            if not mapping_id:
+                continue
+            if mapping_id in enabled_mappings:
+                prev_source = enabled_mappings[mapping_id].get("_source_file", "?")
+                print(
+                    f"[SemanticMatcher] WARNING: Duplicate id {mapping_id!r} in {source} ignored (already loaded from {prev_source})"
+                )
+                duplicates += 1
+                continue
+            mapping["_source_file"] = source
+            enabled_mappings[mapping_id] = mapping
+
+        print(
+            f"[SemanticMatcher] 加载了 {len(enabled_mappings)} 个启用的意图映射 "
+            f"({file_count} 个文件, {duplicates} 个重复覆盖)"
+        )
         return enabled_mappings
 
     except Exception as e:
@@ -211,7 +409,7 @@ SEMANTIC_MATCH_PROMPT = """你是一个语义匹配助手。用户输入的是�
 class SemanticMatcher:
     """基于 LLM 的语义匹配器"""
 
-    def __init__(self, llm_client=None, model_config: dict = None, config_path: str = "data/intent_mappings.json"):
+    def __init__(self, llm_client=None, model_config: dict = None, config_path: str = "data/mappings"):
         """
         Args:
             llm_client: LLM 客户端（兼容 LangChain 或自定义）
@@ -382,21 +580,9 @@ class SemanticMatcher:
         return extract_number_from_text(text, pattern)
 
     def _extract_any_number(self, text: str) -> Optional[str]:
-        """从文本中提取第一个数字"""
-        # 优先提取阿拉伯数字
+        """从文本中提取第一个数字（前置 normalize_chinese_numerals 已转阿拉伯）"""
         match = re.search(r'\d+', text)
-        if match:
-            return match.group(0)
-
-        # 提取汉字数字
-        chinese_chars = "零一幺二三四五六七八九十百千万"
-        match = re.search(f'[{chinese_chars}]+', text)
-        if match:
-            converted = chinese_to_number(match.group(0))
-            if converted is not None:
-                return str(converted)
-
-        return None
+        return match.group(0) if match else None
 
     def _get_missing_params(self, parameters: Dict, mapping: Dict) -> List[str]:
         """获取缺失的必填参数"""
@@ -440,7 +626,7 @@ class RuleBasedMatcher:
     - 参数注入到步骤模板
     """
 
-    def __init__(self, config_path: str = "data/intent_mappings.json"):
+    def __init__(self, config_path: str = "data/mappings"):
         """
         Args:
             config_path: 意图映射配置文件路径
@@ -563,31 +749,37 @@ class RuleBasedMatcher:
         支持两种 step 类型(与 task_decomposer_node 一致):
         - str: 文本描述,"{{param}}" 替换为参数值
         - dict: 浏览器结构化动作,{"action":"browser_*","selector":"...{{param}}..."},
-          对 dict 中所有字符串字段做占位符替换
+          对 dict 中所有字符串字段做占位符替换。
+          递归处理 browser_if 的 condition(dict)、then/else(list) 等嵌套结构。
         """
-        result = []
-        for step in steps:
-            if isinstance(step, dict):
-                # Browser step dict - replace placeholders in every string field.
-                substituted = {}
-                for key, value in step.items():
-                    if isinstance(value, str):
-                        for name, val in parameters.items():
-                            value = value.replace(f"{{{{{name}}}}}", str(val))
-                        for name in missing_params:
-                            value = value.replace(f"{{{{{name}}}}}", f"[缺失{name}]")
-                        substituted[key] = value
-                    else:
-                        substituted[key] = value
-                result.append(substituted)
-            else:
-                substituted = step
-                for name, value in parameters.items():
-                    substituted = substituted.replace(f"{{{{{name}}}}}", str(value))
-                for name in missing_params:
-                    substituted = substituted.replace(f"{{{{{name}}}}}", f"[缺失{name}]")
-                result.append(substituted)
-        return result
+        return [self._fill_step(step, parameters, missing_params) for step in steps]
+
+    def _fill_step(self, step, parameters: Dict, missing_params: list):
+        if isinstance(step, dict):
+            substituted = {}
+            for key, value in step.items():
+                if isinstance(value, str):
+                    for name, val in parameters.items():
+                        value = value.replace(f"{{{{{name}}}}}", str(val))
+                    for name in missing_params:
+                        value = value.replace(f"{{{{{name}}}}}", f"[缺失{name}]")
+                    substituted[key] = value
+                elif isinstance(value, list):
+                    substituted[key] = [self._fill_step(s, parameters, missing_params) for s in value]
+                elif isinstance(value, dict):
+                    substituted[key] = self._fill_step(value, parameters, missing_params)
+                else:
+                    substituted[key] = value
+            return substituted
+        elif isinstance(step, str):
+            substituted = step
+            for name, value in parameters.items():
+                substituted = substituted.replace(f"{{{{{name}}}}}", str(value))
+            for name in missing_params:
+                substituted = substituted.replace(f"{{{{{name}}}}}", f"[缺失{name}]")
+            return substituted
+        else:
+            return step
 
     def _get_instruction(self, mapping: Dict, parameters: Dict, missing_params: List[str]) -> str:
         """生成指令描述"""
@@ -630,7 +822,7 @@ class HybridMatcher:
         self,
         llm_client=None,
         model_config: dict = None,
-        config_path: str = "data/intent_mappings.json"
+        config_path: str = "data/mappings"
     ):
         """
         Args:

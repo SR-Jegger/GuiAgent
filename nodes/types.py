@@ -116,6 +116,10 @@ class AgentState(TypedDict, total=False):
     semantic_matched_id: Optional[str]  # matched_id from semantic matcher
     semantic_parameters: Optional[dict]  # extracted parameters from semantic matcher
 
+    # Per-line semantic match results (for @path md file expansion).
+    # Each item: {"matched_id": str|None, "is_matched": bool, "parameters": dict, "instruction": str, "original_text": str}
+    semantic_matches: Optional[list[dict]]
+
     # User-provided images (multimodal input) — list of base64 data URIs or HTTP URLs
     input_images: Optional[list[str]]
 

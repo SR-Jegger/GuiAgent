@@ -99,7 +99,7 @@ def parse_args() -> argparse.Namespace:
         "--intent-mapping-config-path",
         type=str,
         default=None,
-        help="Path to intent_mappings.json (default: data/intent_mappings.json).",
+        help="Path to intent mappings file or directory (default: data/mappings).",
     )
     parser.add_argument(
         "--semantic-matched-id",
@@ -201,7 +201,7 @@ def main():
     if semantic_matched_id:
         try:
             from nodes.task_decomposer_node import IntentMappingConfig
-            cfg_path = args.intent_mapping_config_path or "data/intent_mappings.json"
+            cfg_path = args.intent_mapping_config_path or "data/mappings"
             cfg = IntentMappingConfig(cfg_path)
             mapping = cfg.get_mapping_by_id(semantic_matched_id)
             if mapping:

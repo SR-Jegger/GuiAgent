@@ -26,7 +26,7 @@ import time
 import signal
 
 
-# Default server endpoint
+# Default server endpoint  start_server.py 启动的那个 FastAPI 服务的地址
 DEFAULT_SERVER_URL = "http://127.0.0.1:8000"
 
 # Polling config
@@ -94,7 +94,7 @@ def parse_args() -> argparse.Namespace:
         "--intent-mapping-config-path",
         type=str,
         default=None,
-        help="Path to intent_mappings.json (default: data/intent_mappings.json).",
+        help="Path to intent mappings file or directory (default: data/mappings).",
     )
     parser.add_argument(
         "--semantic-matched-id",

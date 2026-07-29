@@ -7,6 +7,9 @@
 支持 @path/to/task.md 语法：提交时把输入框里的 @路径引用展开为
 对应 markdown 文件的原始全文（多行字符串），整体作为一个 instruction
 发给后端。展开失败（文件不存在）时该 @path 被替换为空字符串。
+
+来自 @path 展开的指令会带上 from_file=True 标记，后端据此跳过语义匹配，
+直接把多行文本交给 task_decomposer 按行解析。
 """
 
 from __future__ import annotations
@@ -62,7 +65,7 @@ class MainEntryCard:
 
     def __init__(
         self,
-        on_submit: Callable[[str], None],
+        on_submit: Callable[[str, bool], None],
         on_cancel: Optional[Callable[[], None]] = None,
         asr_server_url: str = DEFAULT_ASR_SERVER_URL,
     ):
@@ -90,6 +93,19 @@ class MainEntryCard:
         """设置卡片状态"""
         self._state = state
         self._runtime.set_state(state)
+
+    def show_confirmation(
+        self,
+        message: str,
+        on_confirm: Optional[Callable[[], None]] = None,
+        on_cancel: Optional[Callable[[], None]] = None,
+        on_alternate: Optional[Callable[[], None]] = None,
+    ) -> None:
+        """弹出确认 UI（建议推进 X，确认吗？+ 确认/取消/换一个 三按钮）。
+
+        线程安全：通过 signal marshal 到 Qt 线程。
+        """
+        self._runtime.show_confirmation(message, on_confirm, on_cancel, on_alternate)
 
     def close(self) -> None:
         """关闭卡片"""
@@ -131,6 +147,19 @@ class _QtCardRuntime:
             return
         if hasattr(self._window, 'state_changed'):
             self._window.state_changed.emit(state.value)
+
+    def show_confirmation(
+        self,
+        message: str,
+        on_confirm: Optional[Callable[[], None]] = None,
+        on_cancel: Optional[Callable[[], None]] = None,
+        on_alternate: Optional[Callable[[], None]] = None,
+    ) -> None:
+        """通过 signal marshal 到 Qt 线程显示确认 UI。"""
+        if self._failed or not self._window:
+            return
+        if hasattr(self._window, 'confirmation_requested'):
+            self._window.confirmation_requested.emit(message, on_confirm, on_cancel, on_alternate)
 
     def close_card(self) -> None:
         """关闭卡片并终止 Qt 事件循环"""
@@ -297,15 +326,96 @@ def _build_main_entry_window():
             painter.setFont(font)
             painter.drawText(QtCore.QRectF(0, 0, 60, 60), QtCore.Qt.AlignCenter, f"{seconds:.1f}")
 
+    class _DockShell(QtWidgets.QFrame):
+        """贴边抽屉壳：横向胶囊形，承载展开/语音两个图标按钮，支持纵向拖拽。
+
+        边框颜色 + 动态环绕动画由 set_border 驱动，paintEvent 自定义绘制。
+        动态环绕用 QObject.startTimer 驱动 rotation 角度，conic gradient 沿圆周旋转。
+        """
+
+        dragMoved = QtCore.Signal(QtCore.QPoint)
+        dragReleased = QtCore.Signal()
+
+        def __init__(self, parent=None):
+            super().__init__(parent)
+            self.setObjectName("DockShell")
+            self.setFixedSize(100, 60)
+            self._drag_offset: Optional[QtCore.QPoint] = None
+            # 边框绘制参数
+            self._border_color = QtGui.QColor("#9CA3AF")
+            self._border_animated = False
+            self._border_rotation_value = 0.0
+            # QObject 内置 timer（不依赖单独 QObject 的线程亲和性）
+            self._border_timer_id: int = -1
+
+        def timerEvent(self, event):
+            if self._border_animated:
+                self._border_rotation_value = (self._border_rotation_value + 6) % 360
+                self.update()
+            super().timerEvent(event)
+
+        def set_border(self, color: QtGui.QColor, animated: bool) -> None:
+            """设置边框颜色，animated=True 时启用 conic gradient 旋转动画。"""
+            self._border_color = color
+            self._border_animated = animated
+            if animated:
+                if self._border_timer_id < 0:
+                    self._border_timer_id = self.startTimer(30)
+            else:
+                if self._border_timer_id >= 0:
+                    self.killTimer(self._border_timer_id)
+                    self._border_timer_id = -1
+            self.update()
+
+        def paintEvent(self, event):
+            super().paintEvent(event)  # 画 QSS 背景
+            painter = QtGui.QPainter(self)
+            painter.setRenderHint(QtGui.QPainter.Antialiasing)
+            # 边框画在 widget 内侧，留 2px 余量给阴影/抗锯齿
+            rect = self.rect().adjusted(2, 2, -2, -2)
+            if self._border_animated:
+                # 动态环绕：亮蓝段沿圆周旋转
+                # 0.0-0.3 是亮蓝段（占圆周 30%），其余是深蓝，随 rotation 旋转
+                gradient = QtGui.QConicalGradient(rect.center(), self._border_rotation_value)
+                gradient.setColorAt(0.0, QtGui.QColor("#93C5FD"))   # 亮蓝
+                gradient.setColorAt(0.3, QtGui.QColor("#2563EB"))   # 深蓝
+                gradient.setColorAt(1.0, QtGui.QColor("#93C5FD"))   # 循环回亮蓝
+                pen = QtGui.QPen(QtGui.QBrush(gradient), 4)
+                pen.setCapStyle(QtCore.Qt.RoundCap)
+                painter.setPen(pen)
+                painter.drawRoundedRect(rect, 12, 12)
+            else:
+                pen = QtGui.QPen(self._border_color, 2)
+                painter.setPen(pen)
+                painter.drawRoundedRect(rect, 12, 12)
+
+        def mousePressEvent(self, event):
+            if event.button() == QtCore.Qt.LeftButton:
+                # 只有点击在 shell 本身（非按钮子控件）才发起拖拽
+                child = self.childAt(event.position().toPoint())
+                if child is None or not isinstance(child, QtWidgets.QPushButton):
+                    self._drag_offset = event.globalPosition().toPoint() - self.window().pos()
+
+        def mouseMoveEvent(self, event):
+            if self._drag_offset is not None:
+                new_pos = event.globalPosition().toPoint() - self._drag_offset
+                self.dragMoved.emit(new_pos)
+
+        def mouseReleaseEvent(self, event):
+            if self._drag_offset is not None:
+                self._drag_offset = None
+                self.dragReleased.emit()
+
     class MainEntryWindow(QtWidgets.QWidget):
         snapshot_received = QtCore.Signal(object)
         state_changed = QtCore.Signal(str)
         request_close = QtCore.Signal()
         start_countdown_requested = QtCore.Signal()  # 新增：请求启动倒计时信号
+        confirmation_requested = QtCore.Signal(str, object, object, object)  # message, on_confirm, on_cancel, on_alternate
 
         def __init__(
             self,
-            on_submit: Callable[[str], None],
+            on_submit: Callable[[str, bool], None],
             on_cancel: Optional[Callable[[], None]],
             asr_server_url: str,
         ):
@@ -323,10 +433,23 @@ def _build_main_entry_window():
             self._preset_btn = None
             self._preset_panel = None
 
-            # 折叠状态
-            self._collapsed = False
-            self._full_height = 400  # 完整高度
-            self._collapsed_height = 65  # 折叠高度（标题行 + 状态行）
+            # Dock（贴边抽屉）状态
+            self._docked: bool = True  # 默认以 dock 形态启动
+            self._DOCK_W = 100
+            self._DOCK_H = 60
+            self._FULL_W = 380
+            self._FULL_H = 400
+
+            # 跨会话记忆 dock 纵向位置（相对屏幕可用高度的比例 0.0-1.0）
+            self._settings = QtCore.QSettings("GuiAgent", "MainEntryCard")
+            try:
+                self._dock_y_ratio = float(self._settings.value("dock_y_ratio", 0.5))
+            except (TypeError, ValueError):
+                self._dock_y_ratio = 0.5
+            self._dock_y_ratio = max(0.0, min(1.0, self._dock_y_ratio))
+
+            # 确认 UI 回调临时存储
+            self._confirm_callbacks: dict = {}
 
             self._init_window()
             self._build_ui()
@@ -336,6 +459,7 @@ def _build_main_entry_window():
             self.state_changed.connect(self._handle_state_change)
             self.request_close.connect(self._safe_close)
             self.start_countdown_requested.connect(self._handle_start_countdown)  # 新增
+            self.confirmation_requested.connect(self._on_confirmation_requested)  # 确认 UI
 
         def _init_window(self) -> None:
             self.setWindowFlags(
@@ -344,21 +468,29 @@ def _build_main_entry_window():
                 | QtCore.Qt.WindowStaysOnTopHint
             )
             self.setAttribute(QtCore.Qt.WA_TranslucentBackground, True)
-            self.resize(450, 400)
-
-            shadow = QtWidgets.QGraphicsDropShadowEffect(self)
-            shadow.setBlurRadius(34)
-            shadow.setOffset(0, 10)
-            shadow.setColor(QtGui.QColor(3, 12, 24, 180))
-            self.setGraphicsEffect(shadow)
+            # 初始尺寸按 dock 形态；展开动画会扩到 _FULL_W x _FULL_H
+            self.resize(self._DOCK_W, self._DOCK_H)
 
         def _build_ui(self) -> None:
             root_layout = QtWidgets.QVBoxLayout(self)
             root_layout.setContentsMargins(0, 0, 0, 0)
 
+            # 用 QStackedWidget 在 dock / 主卡片之间切换（同一窗口、同一信号槽）
+            self._stack = QtWidgets.QStackedWidget(self)
+            root_layout.addWidget(self._stack)
+
+            # === page 0: 主卡片 shell（原有内容）===
             shell = QtWidgets.QFrame()
             shell.setObjectName("MainCardShell")
-            root_layout.addWidget(shell)
+            self._stack.addWidget(shell)
+            self._main_shell = shell
+
+            # 主卡片阴影
+            main_shadow = QtWidgets.QGraphicsDropShadowEffect(shell)
+            main_shadow.setBlurRadius(34)
+            main_shadow.setOffset(0, 10)
+            main_shadow.setColor(QtGui.QColor(3, 12, 24, 180))
+            shell.setGraphicsEffect(main_shadow)
 
             layout = QtWidgets.QVBoxLayout(shell)
             layout.setContentsMargins(18, 16, 18, 16)
@@ -380,11 +512,11 @@ def _build_main_entry_window():
 
             title_row.addStretch(1)
 
-            # 折叠按钮（右上角）
+            # 折叠按钮（右上角，点击回到 dock 形态）
             self.collapse_button = QtWidgets.QPushButton("▼")
             self.collapse_button.setObjectName("CollapseButton")
             self.collapse_button.setFixedSize(28, 28)
-            self.collapse_button.clicked.connect(self._toggle_collapse)
+            self.collapse_button.clicked.connect(self._toggle_dock)
             title_row.addWidget(self.collapse_button)
 
             # 倒计时光圈组件（右上角）
@@ -473,6 +605,34 @@ def _build_main_entry_window():
             self.status_message.setWordWrap(True)
             progress_section.addWidget(self.status_message)
 
+            # === 确认 UI（模式 A 弹出：建议推进 X，确认吗？+ 3 按钮）===
+            self._confirm_frame = QtWidgets.QFrame()
+            self._confirm_frame.setObjectName("ConfirmFrame")
+            confirm_layout = QtWidgets.QVBoxLayout(self._confirm_frame)
+            confirm_layout.setContentsMargins(8, 8, 8, 8)
+            confirm_layout.setSpacing(6)
+
+            self._confirm_label = QtWidgets.QLabel("")
+            self._confirm_label.setObjectName("ConfirmLabel")
+            self._confirm_label.setWordWrap(True)
+            self._confirm_label.setStyleSheet("color: #F59E0B; font-weight: bold;")
+            confirm_layout.addWidget(self._confirm_label)
+
+            confirm_btn_row = QtWidgets.QHBoxLayout()
+            confirm_btn_row.setSpacing(6)
+            for text, key, obj_name in [
+                ("确认", "confirm", "ConfirmBtn"),
+                ("换一个", "alternate", "AlternateBtn"),
+                ("取消", "cancel", "CancelConfirmBtn"),
+            ]:
+                btn = QtWidgets.QPushButton(text)
+                btn.setObjectName(obj_name)
+                btn.clicked.connect(lambda checked, k=key: self._on_confirm_button(k))
+                confirm_btn_row.addWidget(btn, 1)
+            confirm_layout.addLayout(confirm_btn_row)
+            self._confirm_frame.hide()
+            progress_section.addWidget(self._confirm_frame)
+
             # === 底部状态提示行（左状态，右取消按钮）===
             footer_row = QtWidgets.QHBoxLayout()
             footer_row.setSpacing(8)
@@ -491,21 +651,63 @@ def _build_main_entry_window():
             # === 样式 ===
             self.setStyleSheet(self._get_stylesheet())
 
+            # === page 1: dock shell（贴边抽屉，两个图标按钮 + 状态色点）===
+            self._dock_shell = _DockShell(self)
+            self._stack.addWidget(self._dock_shell)
+
+            # dock 阴影
+            dock_shadow = QtWidgets.QGraphicsDropShadowEffect(self._dock_shell)
+            dock_shadow.setBlurRadius(20)
+            dock_shadow.setOffset(0, 4)
+            dock_shadow.setColor(QtGui.QColor(3, 12, 24, 160))
+            self._dock_shell.setGraphicsEffect(dock_shadow)
+
+            # dock 内部布局：两个 40x40 图标按钮水平并列，垂直居中
+            dock_layout = QtWidgets.QHBoxLayout(self._dock_shell)
+            dock_layout.setContentsMargins(8, 8, 8, 8)
+            dock_layout.setSpacing(8)
+
+            self._dock_expand_btn = QtWidgets.QPushButton("☰")
+            self._dock_expand_btn.setObjectName("DockExpandButton")
+            self._dock_expand_btn.setFixedSize(40, 40)
+            self._dock_expand_btn.setCursor(QtCore.Qt.PointingHandCursor)
+            self._dock_expand_btn.clicked.connect(self._toggle_dock)
+            dock_layout.addWidget(self._dock_expand_btn)
+
+            self._dock_voice_btn = QtWidgets.QPushButton("🎤")
+            self._dock_voice_btn.setObjectName("DockVoiceButton")
+            self._dock_voice_btn.setFixedSize(40, 40)
+            self._dock_voice_btn.setCursor(QtCore.Qt.PointingHandCursor)
+            self._dock_voice_btn.clicked.connect(self._toggle_voice_recording)
+            dock_layout.addWidget(self._dock_voice_btn)
+
+            # dock 拖拽信号路由到主窗口
+            self._dock_shell.dragMoved.connect(self._on_dock_drag_moved)
+            self._dock_shell.dragReleased.connect(self._save_dock_position)
+
+            # QStackedWidget 的 sizeHint 取所有 page 最大值，会推大窗口；
+            # 用固定 size 强制 dock 形态的初始尺寸
+            self.setFixedSize(self._DOCK_W, self._DOCK_H)
+
+            # 初始展示 dock 形态
+            self._stack.setCurrentWidget(self._dock_shell)
+            self._update_dock_border()
+
         def _build_step_card(self, title: str, highlighted: bool):
             frame = QtWidgets.QFrame()
             frame.setObjectName("CurrentStepFrame" if highlighted else "StepFrame")
-            layout = QtWidgets.QVBoxLayout(frame)
-            layout.setContentsMargins(12, 8, 12, 8)
-            layout.setSpacing(3)
+            layout = QtWidgets.QHBoxLayout(frame)
+            layout.setContentsMargins(12, 6, 12, 6)
+            layout.setSpacing(8)
 
             title_label = QtWidgets.QLabel(title)
             title_label.setObjectName("CurrentStepTitle" if highlighted else "StepTitle")
-            layout.addWidget(title_label)
+            layout.addWidget(title_label, 0)
 
             text_label = QtWidgets.QLabel("暂无")
             text_label.setWordWrap(True)
             text_label.setObjectName("CurrentStepText" if highlighted else "StepText")
-            layout.addWidget(text_label)
+            layout.addWidget(text_label, 1)
 
             return {"frame": frame, "text": text_label}
 
@@ -573,12 +775,12 @@ def _build_main_entry_window():
                     max-height: 1px;
                 }
                 #StepFrame {
-                    border-radius: 12px;
+                    border-radius: 10px;
                     background: rgba(18, 32, 51, 0.96);
                     border: 1px solid rgba(93, 120, 158, 0.20);
                 }
                 #CurrentStepFrame {
-                    border-radius: 12px;
+                    border-radius: 10px;
                     background: rgba(19, 50, 74, 0.98);
                     border: 1px solid rgba(59, 166, 217, 0.85);
                 }
@@ -598,7 +800,7 @@ def _build_main_entry_window():
                 }
                 #CurrentStepText {
                     color: #EFF9FF;
-                    font-size: 12px;
+                    font-size: 11px;
                     font-weight: 600;
                 }
                 #StatusMessage {
@@ -647,12 +849,37 @@ def _build_main_entry_window():
                     font-weight: 600;
                     margin-left: 8px;
                 }
+                #DockShell {
+                    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                        stop:0 rgba(11,18,32,245),
+                        stop:1 rgba(19,31,52,242));
+                    border-radius: 14px;
+                }
+                #DockExpandButton, #DockVoiceButton {
+                    background: rgba(59, 166, 217, 0.25);
+                    color: #F8FBFF;
+                    border: none;
+                    border-radius: 10px;
+                    font-size: 18px;
+                }
+                #DockExpandButton:hover, #DockVoiceButton:hover {
+                    background: rgba(59, 166, 217, 0.5);
+                }
+                #DockCountdownLabel {
+                    color: #F59E0B;
+                    font-size: 11px;
+                    font-weight: 700;
+                    qproperty-alignment: AlignCenter;
+                }
             """
 
         def show_with_animation(self) -> None:
             self.setWindowOpacity(0.0)
             self.show()
-            self._move_to_bottom_right()
+            if self._docked:
+                self._move_dock_to_edge()
+            else:
+                self._move_to_bottom_right()
 
             start_pos = self.pos() + QtCore.QPoint(0, 14)
             end_pos = self.pos()
@@ -676,10 +903,12 @@ def _build_main_entry_window():
             group.start(QtCore.QAbstractAnimation.DeleteWhenStopped)
 
         def _move_to_bottom_right(self) -> None:
+            """主卡片形态的兜底定位（启动时若不是 dock 态走这里）。"""
             screen = QtGui.QGuiApplication.primaryScreen()
             if screen is None:
                 return
             geo = screen.availableGeometry()
+            self.resize(self._FULL_W, self._FULL_H)
             self.move(
                 geo.x() + geo.width() - self.width() - 22,
                 geo.y() + geo.height() - self.height() - 26,
@@ -690,7 +919,11 @@ def _build_main_entry_window():
             if self._state == CardState.RECORDING:
                 # 停止录音，启动倒计时自动执行
                 text = self._asr_client.stop_recording()
+                # 纠正 ASR 同音错字（数字标识命中 cache 时用真实 target_id 汉字部分替换）
+                text = self._correct_asr_text(text)
                 self._state = CardState.CONFIRMING
+                self._set_dock_voice_recording(False)
+                self._update_dock_border()
                 self.voice_button.setText("🎤 语音输入")
                 self.voice_button.setStyleSheet("")
                 self.voice_button.setEnabled(False)
@@ -698,6 +931,8 @@ def _build_main_entry_window():
                 if self._preset_btn:
                     self._preset_btn.setEnabled(False)
 
+                # 纠正后文本写回输入框，让用户看到准确结果（也作为提交时的指令）
+                self.text_input.setText(text)
                 # 显示倒计时提示
                 self.countdown_hint.setVisible(True)
                 self.countdown_hint.setText(f"识别结果: {text[:30]}...")
@@ -715,11 +950,15 @@ def _build_main_entry_window():
                 )
                 if success:
                     self._state = CardState.RECORDING
+                    self._update_dock_border()
                     self.voice_button.setText("🔴 正在录音...")
                     self.voice_button.setStyleSheet("background: #EF4444;")
+                    # RECORDING 期间不应允许取消按钮（没有运行中的任务可取消）
+                    self.cancel_button.setEnabled(False)
                     if self._preset_btn:
                         self._preset_btn.setEnabled(False)
                     self.hint_label.setText("正在录音，说话结束后自动执行...")
+                    self._set_dock_voice_recording(True)
             else:
                 # IDLE 或其他状态：开始录音（带 final 回调）
                 success = self._asr_client.start_recording(
@@ -728,16 +967,24 @@ def _build_main_entry_window():
                 )
                 if success:
                     self._state = CardState.RECORDING
+                    self._update_dock_border()
                     self.voice_button.setText("🔴 正在录音...")
                     self.voice_button.setStyleSheet("background: #EF4444;")
                     if self._preset_btn:
                         self._preset_btn.setEnabled(False)
                     self.hint_label.setText("正在录音，点击停止...")
+                    self._set_dock_voice_recording(True)
                 else:
                     self.hint_label.setText("语音服务连接失败")
+                    if self._docked:
+                        self._flash_dock_border_red()
 
         def _on_transcript_update(self, text: str) -> None:
             """语音转写结果回调（实时更新）"""
+            # 只有在录音状态才允许写文本框，避免倒计时/执行期间残留的
+            # transcript.update 把已确认的指令文本覆盖掉
+            if self._state != CardState.RECORDING:
+                return
             # 更新文本框（在主线程）
             QtCore.QMetaObject.invokeMethod(
                 self.text_input,
@@ -752,6 +999,8 @@ def _build_main_entry_window():
             if self._state != CardState.RECORDING:
                 return
 
+            # 纠正 ASR 同音错字（数字标识命中 cache 时用真实 target_id 汉字部分替换）
+            text = self._correct_asr_text(text)
             print(f"[MainEntryCard] 检测到静音，自动触发倒计时: {text[:30]}...")
 
             # 保存文本，发射信号在主线程处理
@@ -761,8 +1010,19 @@ def _build_main_entry_window():
         @QtCore.Slot()
         def _handle_start_countdown(self) -> None:
             """在主线程处理倒计时启动"""
+            # 立刻停止录音：避免倒计时期间音频继续推送到服务端，
+            # 导致新的 transcript.update/final 把输入框文本覆盖掉
+            if self._asr_client.is_recording:
+                self._asr_client.stop_recording()
+
+            # dock 形态下自动展开：用户从 dock 启动语音后需看到识别结果与倒计时
+            if self._docked:
+                self._toggle_dock()
+
             # 停止录音状态，进入倒计时
             self._state = CardState.CONFIRMING
+            self._set_dock_voice_recording(False)
+            self._update_dock_border()
             self.voice_button.setText("🎤 语音输入")
             self.voice_button.setStyleSheet("")
             self.voice_button.setEnabled(False)
@@ -770,15 +1030,34 @@ def _build_main_entry_window():
             if self._preset_btn:
                 self._preset_btn.setEnabled(False)
 
+            # 纠正后文本已在 _on_transcript_final 写入 _countdown_text，
+            # 这里写回输入框覆盖实时转写的错字版本
+            text = self._countdown_text
+            self.text_input.setText(text)
             # 显示倒计时提示
             self.countdown_hint.setVisible(True)
-            self.countdown_hint.setText(f"识别: {self._countdown_text[:30]}...")
+            self.countdown_hint.setText(f"识别: {text[:30]}...")
             self.hint_label.setText("倒计时中，点击确认立即执行")
 
             # 启动倒计时光圈
             self.countdown_circle.start()
 
-        def _resolve_instruction(self) -> tuple[str, str]:
+        def _correct_asr_text(self, text: str) -> str:
+            """纠正 ASR 同音错字：用 cache 真实 target_id 替换 text 里的同音汉字部分。
+
+            纯字符串操作，<1ms。cache 未就绪或未命中时原样返回。
+            异常时原样返回，不影响主流程。
+            """
+            if not text:
+                return text
+            try:
+                from utils.kill_chain_cache import correct_target_id_homophone
+                return correct_target_id_homophone(text)
+            except Exception as e:
+                print(f"[MainEntryCard] ASR 文本纠正失败: {e}，原样返回")
+                return text
+
+        def _resolve_instruction(self) -> tuple[str, str, bool]:
             """从输入框取文本，展开 @path/to/file.md 引用。
 
             @path 语法: @后跟路径，路径字符为非空白、非@。
@@ -786,20 +1065,23 @@ def _build_main_entry_window():
             多个 @path 都会展开；展开失败的引用替换为空字符串。
 
             Returns:
-                (展开后的指令文本, 错误提示)。
+                (展开后的指令文本, 错误提示, from_file)。
                 错误提示非空时表示有 @path 文件读不到，调用方应中止提交并提示。
+                from_file 为 True 表示指令来自 @path 文件展开，后端应跳过语义匹配。
             """
             text = self.text_input.toPlainText().strip()
             if not text:
-                return "", ""
+                return "", "", False
 
             # 没有任何 @path 引用，直接返回原文
             if "@" not in text:
-                return text, ""
+                return text, "", False
 
             missing: list[str] = []
+            expanded_any = False
 
             def _expand(match: re.Match) -> str:
+                nonlocal expanded_any
                 raw = match.group(1)
                 # 去掉首尾可能的中文标点或常见分隔符（路径不应包含这些）
                 path = raw.strip()
@@ -810,6 +1092,7 @@ def _build_main_entry_window():
                     return ""
                 try:
                     with open(path, "r", encoding="utf-8") as f:
+                        expanded_any = True
                         return f.read()
                 except Exception as exc:
                     missing.append(f"{path} ({exc})")
@@ -819,9 +1102,9 @@ def _build_main_entry_window():
             expanded = re.sub(r"@([^\s@]+)", _expand, text)
 
             if missing:
-                return "", f"无法读取文件: {', '.join(missing)}"
+                return "", f"无法读取文件: {', '.join(missing)}", False
 
-            return expanded.strip(), ""
+            return expanded.strip(), "", expanded_any
 
         def _submit_task(self) -> None:
             """提交任务（支持倒计时期间立即执行）"""
@@ -834,7 +1117,7 @@ def _build_main_entry_window():
                 self.countdown_circle.stop()
                 self.countdown_hint.setVisible(False)
 
-            instruction, error = self._resolve_instruction()
+            instruction, error, from_file = self._resolve_instruction()
             if error:
                 self.hint_label.setText(error)
                 self._reset_to_idle()
@@ -845,6 +1128,7 @@ def _build_main_entry_window():
                 return
 
             self._state = CardState.RUNNING
+            self._update_dock_border()
             self.text_input.setEnabled(False)
             self.submit_button.setEnabled(False)
             self.cancel_button.setEnabled(True)
@@ -854,7 +1138,7 @@ def _build_main_entry_window():
             self.hint_label.setText("任务执行中...")
 
             if self.on_submit:
-                self.on_submit(instruction)
+                self.on_submit(instruction, from_file)
 
         def _on_countdown_complete(self) -> None:
             """倒计时完成，自动执行任务"""
@@ -863,7 +1147,7 @@ def _build_main_entry_window():
                 self._asr_client.stop_recording()
 
             self.countdown_hint.setVisible(False)
-            instruction, error = self._resolve_instruction()
+            instruction, error, from_file = self._resolve_instruction()
             if error:
                 self.hint_label.setText(error)
                 self._reset_to_idle()
@@ -872,11 +1156,8 @@ def _build_main_entry_window():
                 self._reset_to_idle()
                 return
 
-            if not instruction:
-                self._reset_to_idle()
-                return
-
             self._state = CardState.RUNNING
+            self._update_dock_border()
             self.text_input.setEnabled(False)
             self.submit_button.setEnabled(False)
             self.cancel_button.setEnabled(True)
@@ -886,7 +1167,7 @@ def _build_main_entry_window():
             self.hint_label.setText("任务执行中...")
 
             if self.on_submit:
-                self.on_submit(instruction)
+                self.on_submit(instruction, from_file)
 
         def _cancel_countdown(self) -> None:
             """取消倒计时，回到输入状态"""
@@ -897,6 +1178,8 @@ def _build_main_entry_window():
         def _reset_to_idle(self) -> None:
             """重置到 IDLE 状态"""
             self._state = CardState.IDLE
+            self._set_dock_voice_recording(False)
+            self._update_dock_border()
             self.text_input.setEnabled(True)
             self.submit_button.setEnabled(True)
             self.cancel_button.setEnabled(False)
@@ -916,10 +1199,16 @@ def _build_main_entry_window():
                 return
 
             if self._state == CardState.RECORDING:
+                # 录音中取消：只停录音，不触发任务取消回调（此时没有运行中的任务）
                 self._asr_client.stop_recording()
                 self._state = CardState.IDLE
+                self._set_dock_voice_recording(False)
+                self._update_dock_border()
                 self.voice_button.setText("🎤 语音输入")
                 self.voice_button.setStyleSheet("")
+                self.cancel_button.setEnabled(False)
+                self.hint_label.setText("已取消录音")
+                return
 
             if self.on_cancel:
                 self.on_cancel()
@@ -945,9 +1234,34 @@ def _build_main_entry_window():
             elif status == PROGRESS_STATUS_CANCELLED:
                 self._handle_state_change(CardState.CANCELLED.value)
 
+        def _on_confirmation_requested(self, message, on_confirm, on_cancel, on_alternate) -> None:
+            """显示确认 UI（由 confirmation_requested signal 触发，在 Qt 线程执行）。"""
+            self._confirm_callbacks = {
+                "confirm": on_confirm,
+                "cancel": on_cancel,
+                "alternate": on_alternate,
+            }
+            self._confirm_label.setText(message)
+            self._confirm_frame.show()
+            self.status_message.setText("等待用户确认...")
+
+        def _on_confirm_button(self, key: str) -> None:
+            """确认/取消/换一个 按钮点击处理。"""
+            cb = self._confirm_callbacks.pop(key, None)
+            # 清空其他回调（一次只响应一个按钮）
+            self._confirm_callbacks = {}
+            self._confirm_frame.hide()
+            self.status_message.setText("")
+            if cb:
+                try:
+                    cb()
+                except Exception as e:
+                    print(f"[MainEntryCard] 确认回调异常: {e}")
+
         def _handle_state_change(self, state: str) -> None:
             """处理状态变化"""
             self._state = CardState(state)
+            self._update_dock_border()
 
             if state == CardState.COMPLETED.value:
                 self.text_input.setEnabled(True)
@@ -979,57 +1293,163 @@ def _build_main_entry_window():
 
         def closeEvent(self, event):
             """关闭事件"""
-            if self._state == CardState.RECORDING:
+            # 持久化 dock 纵向位置
+            self._save_dock_position()
+            # 用 is_recording 而非状态判断，覆盖 RECORDING/CONFIRMING 任何残留录音
+            if self._asr_client.is_recording:
                 self._asr_client.stop_recording()
             self._asr_client.disconnect()
             super().closeEvent(event)
 
-        def _toggle_collapse(self) -> None:
-            """切换折叠状态（任何状态都允许折叠）"""
-            if self._collapsed:
-                # 展开
-                self._collapsed = False
-                self.collapse_button.setText("▼")
-                self.collapsible_content.setVisible(True)
-                self.collapsed_status.setVisible(False)
-                # 动画展开
-                self._animate_height(self._collapsed_height, self._full_height)
+        def _toggle_dock(self) -> None:
+            """在 dock 形态与主卡片形态之间切换。"""
+            if self._docked:
+                # 展开：dock -> 主卡片
+                self._docked = False
+                dock_pos = self.pos()
+                self._stack.setCurrentWidget(self._main_shell)
+                self._update_dock_border()
+                self._animate_dock_transition(
+                    from_size=QtCore.QSize(self._DOCK_W, self._DOCK_H),
+                    to_size=QtCore.QSize(self._FULL_W, self._FULL_H),
+                    from_pos=dock_pos,
+                    to_pos=self._compute_main_pos_from_dock(dock_pos),
+                    fade_target=self._main_shell,
+                )
             else:
-                # 折叠
-                self._collapsed = True
-                self.collapse_button.setText("▶")
-                # 显示折叠时的状态标签
-                self.collapsed_status.setVisible(True)
-                self.collapsed_status.setText(self.hint_label.text())
-                # 动画折叠
-                self._animate_height(self._full_height, self._collapsed_height)
-                # 折叠后隐藏内容
-                self.collapsible_content.setVisible(False)
+                # 收起：主卡片 -> dock
+                self._docked = True
+                main_pos = self.pos()
+                self._stack.setCurrentWidget(self._dock_shell)
+                self._update_dock_border()
+                self._animate_dock_transition(
+                    from_size=QtCore.QSize(self._FULL_W, self._FULL_H),
+                    to_size=QtCore.QSize(self._DOCK_W, self._DOCK_H),
+                    from_pos=main_pos,
+                    to_pos=self._compute_dock_pos_from_ratio(),
+                    fade_target=None,
+                )
 
-        def _animate_height(self, from_height: int, to_height: int) -> None:
-            """高度动画"""
-            animation = QtCore.QPropertyAnimation(self, b"size", self)
-            animation.setDuration(200)
-            animation.setStartValue(QtCore.QSize(self.width(), from_height))
-            animation.setEndValue(QtCore.QSize(self.width(), to_height))
-            animation.setEasingCurve(QtCore.QEasingCurve.OutCubic)
-            animation.start(QtCore.QAbstractAnimation.DeleteWhenStopped)
-
-            # 同时移动位置（保持右下角对齐）
+        def _compute_dock_pos_from_ratio(self) -> QtCore.QPoint:
+            """根据 _dock_y_ratio 算 dock 应贴的屏幕坐标。"""
             screen = QtGui.QGuiApplication.primaryScreen()
-            if screen:
-                geo = screen.availableGeometry()
-                # 计算新位置（右下角）
-                new_y = geo.y() + geo.height() - to_height - 26
-                pos_animation = QtCore.QPropertyAnimation(self, b"pos", self)
-                pos_animation.setDuration(200)
-                pos_animation.setStartValue(self.pos())
-                pos_animation.setEndValue(QtCore.QPoint(
-                    geo.x() + geo.width() - self.width() - 22,
-                    new_y
-                ))
-                pos_animation.setEasingCurve(QtCore.QEasingCurve.OutCubic)
-                pos_animation.start(QtCore.QAbstractAnimation.DeleteWhenStopped)
+            if screen is None:
+                return QtCore.QPoint(0, 0)
+            geo = screen.availableGeometry()
+            x = geo.x() + geo.width() - self._DOCK_W - 12
+            usable_h = max(1, geo.height() - self._DOCK_H)
+            y = geo.y() + int(usable_h * self._dock_y_ratio)
+            return QtCore.QPoint(x, y)
+
+        def _compute_main_pos_from_dock(self, dock_pos: QtCore.QPoint) -> QtCore.QPoint:
+            """主卡片右边贴 dock 左边（重叠 12px），垂直中心对齐 dock 中心。"""
+            screen = QtGui.QGuiApplication.primaryScreen()
+            geo = screen.availableGeometry() if screen else None
+            target_x = dock_pos.x() - self._FULL_W + 12
+            target_y = dock_pos.y() + (self._DOCK_H - self._FULL_H) // 2
+            if geo is not None:
+                target_x = max(geo.x() + 4, target_x)
+                target_y = max(geo.y() + 4, min(geo.y() + geo.height() - self._FULL_H - 4, target_y))
+            return QtCore.QPoint(target_x, target_y)
+
+        def _animate_dock_transition(
+            self,
+            from_size: QtCore.QSize,
+            to_size: QtCore.QSize,
+            from_pos: QtCore.QPoint,
+            to_pos: QtCore.QPoint,
+            fade_target: Optional[QtWidgets.QWidget],
+        ) -> None:
+            """dock <-> 主卡片切换的尺寸+位置+淡入动画。"""
+            # 解除 setFixedSize 锁定，让 QPropertyAnimation 能改变 size
+            self.setMinimumSize(0, 0)
+            self.setMaximumSize(10000, 10000)
+
+            group = QtCore.QParallelAnimationGroup(self)
+
+            size_anim = QtCore.QPropertyAnimation(self, b"size", self)
+            size_anim.setDuration(220)
+            size_anim.setStartValue(from_size)
+            size_anim.setEndValue(to_size)
+            size_anim.setEasingCurve(QtCore.QEasingCurve.OutCubic)
+            group.addAnimation(size_anim)
+
+            pos_anim = QtCore.QPropertyAnimation(self, b"pos", self)
+            pos_anim.setDuration(220)
+            pos_anim.setStartValue(from_pos)
+            pos_anim.setEndValue(to_pos)
+            pos_anim.setEasingCurve(QtCore.QEasingCurve.OutCubic)
+            group.addAnimation(pos_anim)
+
+            if fade_target is not None:
+                fade_target.setWindowOpacity(0.0)
+                fade_anim = QtCore.QPropertyAnimation(fade_target, b"windowOpacity", self)
+                fade_anim.setDuration(220)
+                fade_anim.setStartValue(0.0)
+                fade_anim.setEndValue(1.0)
+                group.addAnimation(fade_anim)
+
+            # 动画结束后用 setFixedSize 锁定终态，防止 layout 反向推大窗口
+            group.finished.connect(lambda: self.setFixedSize(to_size))
+            group.start(QtCore.QAbstractAnimation.DeleteWhenStopped)
+
+        def _on_dock_drag_moved(self, new_pos: QtCore.QPoint) -> None:
+            """dock 拖拽中：x 固定贴右边缘，y clamp 到屏幕内。"""
+            screen = QtGui.QGuiApplication.primaryScreen()
+            if screen is None:
+                return
+            geo = screen.availableGeometry()
+            x = geo.x() + geo.width() - self._DOCK_W - 12
+            y = new_pos.y()
+            y = max(geo.y() + 4, min(geo.y() + geo.height() - self._DOCK_H - 4, y))
+            self.move(x, y)
+
+        def _save_dock_position(self) -> None:
+            """拖拽释放 / 关闭时把当前 dock y 存成 ratio。"""
+            if not self._docked:
+                return
+            screen = QtGui.QGuiApplication.primaryScreen()
+            if screen is None:
+                return
+            geo = screen.availableGeometry()
+            usable_h = max(1, geo.height() - self._DOCK_H)
+            ratio = (self.pos().y() - geo.y()) / usable_h
+            self._dock_y_ratio = max(0.0, min(1.0, ratio))
+            self._settings.setValue("dock_y_ratio", self._dock_y_ratio)
+
+        def _move_dock_to_edge(self) -> None:
+            """启动时把 dock 放到记忆位置。"""
+            self.move(self._compute_dock_pos_from_ratio())
+
+        def _update_dock_border(self) -> None:
+            """根据 CardState 更新 dock 边框颜色与是否启用动态环绕。
+
+            RECORDING 蓝色动态环绕；其他状态静态纯色边框。
+            RUNNING 时 dock 不可见（CONFIRMING 已自动展开），颜色仅作兜底。
+            """
+            state_border = {
+                CardState.IDLE: ("#9CA3AF", False),
+                CardState.RECORDING: ("#3B82F6", True),
+                CardState.CONFIRMING: ("#F59E0B", False),
+                CardState.RUNNING: ("#3B82F6", False),
+                CardState.COMPLETED: ("#10B981", False),
+                CardState.FAILED: ("#EF4444", False),
+                CardState.CANCELLED: ("#64748B", False),
+            }
+            color_hex, animated = state_border.get(self._state, ("#9CA3AF", False))
+            self._dock_shell.set_border(QtGui.QColor(color_hex), animated)
+
+        def _set_dock_voice_recording(self, recording: bool) -> None:
+            """dock 形态下语音键颜色切换：录音中红，非录音蓝。"""
+            if recording:
+                self._dock_voice_btn.setStyleSheet("background: #EF4444;")
+            else:
+                self._dock_voice_btn.setStyleSheet("")
+
+        def _flash_dock_border_red(self) -> None:
+            """ASR 连接失败时，dock 边框短暂变红 200ms 后恢复当前状态色。"""
+            self._dock_shell.set_border(QtGui.QColor("#EF4444"), False)
+            QtCore.QTimer.singleShot(200, self._update_dock_border)
 
         def _safe_close(self) -> None:
             """安全关闭窗口（通过信号调用）"""

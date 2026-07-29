@@ -308,6 +308,39 @@ class BrowserTools:
         except Exception:
             logger.debug("wait_for_idle timed out (continuing)")
 
+    async def pick_kill_chain_page(
+        self, selector: str = "div.kill_chain_card_grops.target_outer"
+    ) -> Optional[Any]:
+        """从当前所有标签页里挑一个有杀伤链 DOM 的 page。
+
+        kill_chain_cache 轮询用：用户可能关掉启动时拿到的标签页、或在
+        别的标签页里操作指控页，固定持有 page 引用会失效（报 "Target
+        page has been closed"）。每次轮询前调这个方法动态定位当前
+        指控页。
+
+        Args:
+            selector: 识别指控页的 CSS selector（页面含该元素即视为指控页）
+
+        Returns:
+            第一个匹配 selector 的 Page；都没有则返回 None。
+            context 未初始化或访问出错也返回 None。
+        """
+        if not self._context:
+            return None
+        try:
+            pages = list(self._context.pages)
+        except Exception:
+            return None
+        for page in pages:
+            try:
+                if page.is_closed():
+                    continue
+                if await page.locator(selector).count() > 0:
+                    return page
+            except Exception:
+                continue
+        return None
+
     async def save_storage_state(self, path: Optional[str] = None) -> None:
         """Persist cookies/localStorage so the next run starts logged in."""
         target = path or self.storage_state_path

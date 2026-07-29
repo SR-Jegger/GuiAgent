@@ -10,6 +10,8 @@ from app.semantic.semantic_matcher import (
     MatchResult,
     load_intent_mappings,
     chinese_to_number,
+    normalize_chinese_numerals,
+    normalize_strike_mode,
 )
 
 __all__ = [
@@ -19,4 +21,6 @@ __all__ = [
     "MatchResult",
     "load_intent_mappings",
     "chinese_to_number",
+    "normalize_chinese_numerals",
+    "normalize_strike_mode",
 ]

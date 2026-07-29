@@ -8,7 +8,7 @@ import json
 import logging
 import os
 import time
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from PIL import Image
 
@@ -149,6 +149,92 @@ async def execution_node(state: AgentState) -> AgentState:
     executed_actions = []
     normalized_actions = []  # Store normalized coordinates for logging
 
+    # Task-scoped variables for browser_extract + {{name}} placeholder reference.
+    # Populated by browser_extract's store_as, consumed by subsequent browser_*
+    # steps via execute_browser_step's variable substitution.
+    extract_variables: Dict[str, str] = {}
+
+    # Sub-step executor for browser_if's then/else branches. Supports three
+    # sub-step formats:
+    #   1. str  -> sub-instruction, matched via RuleMatcher against skill library
+    #   2. dict with "action": "browser_*" -> direct browser action execution
+    #   3. dict with "type": "<desktop>" -> direct desktop action execution
+    # Defined here (not in execute_action) so it can access `state` for
+    # rules_dir / use_sqlite needed by RuleMatcher, and `extract_variables`
+    # for {{name}} substitution.
+    async def _execute_sub(sub: Any) -> None:
+        # --- String: sub-instruction, match against skill library ---
+        if isinstance(sub, str):
+            if not sub.strip():
+                raise ValueError("browser_if branch contains empty instruction string")
+            from learning.rule_matcher import RuleMatcher
+            rules_dir = state.get("rules_dir", "./rules")
+            use_sqlite = state.get("use_sqlite", True)
+            matcher = RuleMatcher(rules_dir, auto_load=True, use_sqlite=use_sqlite)
+            match_result = matcher.match(sub)
+            if not match_result:
+                raise ValueError(
+                    f"browser_if branch instruction '{sub}' did not match any skill "
+                    f"in rules_dir={rules_dir}"
+                )
+            print(f"  [BROWSER_IF] sub-instruction '{sub}' matched skill: "
+                  f"{match_result.get('rule_name')} ({match_result.get('rule_id')})")
+
+            # Resolve icon_data coordinates via image matching (mirrors
+            # fast_path_node). Skills with icon_data store normalized/recorded
+            # coordinates that must be resolved against the current screen via
+            # template matching before execution; otherwise clicks land at the
+            # raw normalized coords (0-1000) instead of real pixel locations.
+            rule_actions = match_result.get("actions", [])
+            try:
+                from learning.skill_store import SkillStore
+                store = SkillStore()
+                skill = store.get(match_result.get("rule_id"))
+                if skill and skill.get("icon_data"):
+                    print(f"  [BROWSER_IF] 技能包含 icon_data，准备截图进行图像匹配...")
+                    from nodes.fast_path_node import (
+                        resolve_icon_coordinates, get_ocr_locator,
+                    )
+                    time.sleep(state.get("ocr_wait_time", 1.0))
+                    ocr_locator = get_ocr_locator()
+                    screenshot_array = ocr_locator.capture_screenshot()
+                    if screenshot_array is not None:
+                        rule_actions = resolve_icon_coordinates(
+                            match_result, screenshot_array,
+                        )
+                    else:
+                        print(f"  [BROWSER_IF] 截图失败，使用原始坐标")
+            except Exception as e:
+                print(f"  [BROWSER_IF] icon_data 匹配失败: {e}")
+                import traceback
+                traceback.print_exc()
+
+            for sub_action in rule_actions:
+                await _execute_sub(sub_action)
+            return
+
+        # --- Dict: normalize to "action" key and dispatch by prefix ---
+        if not isinstance(sub, dict):
+            raise ValueError(f"browser_if branch sub-step has unsupported type: {type(sub).__name__}")
+
+        sub_type = sub.get("action", "") or sub.get("type", "")
+        if not sub_type:
+            raise ValueError(f"browser_if branch sub-step missing 'action'/'type': {sub}")
+
+        if sub_type.startswith("browser_"):
+            browser_sub = dict(sub)
+            browser_sub["action"] = sub_type
+            await execute_browser_step(
+                browser_tools, browser_sub,
+                execute_sub=_execute_sub, variables=extract_variables,
+            )
+        else:
+            desktop_action = {k: v for k, v in sub.items() if k != "type"}
+            desktop_action["action"] = sub_type
+            await execute_action(
+                tools, browser_tools, desktop_action, sub_step_executor=_execute_sub,
+            )
+
     # 从llm_response 或 fastrule节点 中提取的动作列表action_list
     try:
         for action_id, action in enumerate(action_list):
@@ -178,7 +264,10 @@ async def execution_node(state: AgentState) -> AgentState:
 
             # Execute action and check for stop signal
             print(f"  [EXECUTION] Parameters: {action_parameter}")
-            should_stop = await execute_action(tools, browser_tools, action_parameter)
+            should_stop = await execute_action(
+                tools, browser_tools, action_parameter,
+                sub_step_executor=_execute_sub, variables=extract_variables,
+            )
             print(f"  [EXECUTION] Action {action_id + 1} executed successfully")
             logger = logging.getLogger(__name__)
             logger.info(f"Action {action_id + 1} executed successfully")
@@ -309,6 +398,8 @@ async def execute_action(
     computer_tools: ComputerTools,
     browser_tools: Optional[Any],
     action_parameter: dict,
+    sub_step_executor: Optional[Any] = None,
+    variables: Optional[Dict[str, str]] = None,
 ) -> bool:
     """
     Execute a single action - either desktop (via ComputerTools) or browser
@@ -318,6 +409,13 @@ async def execute_action(
         computer_tools: ComputerTools instance for desktop actions
         browser_tools: BrowserTools instance (or None) for browser_* actions
         action_parameter: Dict with 'action' type and parameters
+        sub_step_executor: Optional async callback for browser_if's then/else
+            sub-steps. Supports browser_* actions, desktop actions, and string
+            sub-instructions (matched via RuleMatcher). When None, browser_if
+            branches can only contain browser_* actions.
+        variables: Optional task-scoped variable dict for {{name}} placeholder
+            substitution in browser_* actions. Populated by browser_extract,
+            consumed by subsequent steps referencing {{name}}.
 
     Returns:
         stop (bool): True if the agent should terminate
@@ -332,7 +430,10 @@ async def execute_action(
                 "available. Ensure browser_pre_steps triggered init or that "
                 "ensure_browser_tools was called."
             )
-        await execute_browser_step(browser_tools, action_parameter)
+        await execute_browser_step(
+            browser_tools, action_parameter,
+            execute_sub=sub_step_executor, variables=variables,
+        )
         return False
 
     # ---- Desktop actions (existing behaviour) ----
@@ -397,7 +498,7 @@ async def execute_action(
         )
 
     elif action_type == "call_user":
-        from utils import StepPopup
+        from utils.popup import StepPopup
         StepPopup.show_blocking(
             "User Interaction Required",
             "Please perform the requested manual operation.",
@@ -417,7 +518,7 @@ async def execute_action(
         time.sleep(wait_time)
 
     elif action_type == "answer":
-        from utils import StepPopup
+        from utils.popup import StepPopup
         StepPopup.show_blocking(
             "Task Finished",
             action_parameter["text"],
@@ -429,7 +530,7 @@ async def execute_action(
         return True  # signal to stop
 
     elif action_type in ("stop", "terminate", "done"):
-        from utils import StepPopup
+        from utils.popup import StepPopup
         status = action_parameter.get("status", "success")
         StepPopup.show_blocking(
             "Task Completed",
@@ -442,7 +543,7 @@ async def execute_action(
         return True  # signal to stop
 
     elif action_type == "interact":
-        from utils import StepPopup
+        from utils.popup import StepPopup
         StepPopup.show_blocking(
             "User Interaction Required",
             action_parameter.get("text", "Please interact with the dialog."),

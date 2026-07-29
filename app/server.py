@@ -178,9 +178,44 @@ def create_app() -> FastAPI:
         Create a new GUI automation task.
 
         Returns immediately with task_id. Use GET /api/v1/tasks/{task_id} to check status.
+
+        走语义匹配路径（与卡片/语音入口一致）：
+        1. 请求未指定 semantic_matched_id 时，先用语义匹配器跑一遍
+        2. 语义匹配未命中时，尝试缓存兜底（杀伤链 target_id 在缓存里）
+        避免 CLI 输入落到 task_decomposer 的关键词 ALL 匹配，导致
+        keywords 写成"任一命中即可"语义的 mapping 大面积漏匹配。
         """
+        semantic_matched_id = request.semantic_matched_id
+        semantic_parameters = request.semantic_parameters
+
+        # 汉字数字归一化 + 打击方式归一化：CLI 经 HTTP 提交的指令可能含 ASR 同音
+        # 汉字数字（"八六八六"）或打击方式中文念法（"舰对地打击"），先转 ASCII，
+        # 再走语义匹配 / 缓存兜底 / submit_task。
+        from app.semantic.semantic_matcher import normalize_chinese_numerals, normalize_strike_mode
+        instruction = normalize_chinese_numerals(request.instruction)
+        instruction = normalize_strike_mode(instruction)
+
+        if not semantic_matched_id and instruction:
+            match_result = await agent_service._match_single(instruction)
+            if match_result is not None and match_result.is_matched:
+                semantic_matched_id = match_result.matched_id
+                semantic_parameters = match_result.parameters or {}
+                print(
+                    f"[server] 语义匹配命中: '{instruction}' -> "
+                    f"matched_id={semantic_matched_id}, params={semantic_parameters}"
+                )
+            else:
+                cache_hit = agent_service._try_cache_dispatch(instruction)
+                if cache_hit is not None:
+                    semantic_matched_id = cache_hit.matched_id
+                    semantic_parameters = cache_hit.parameters or {}
+                    print(
+                        f"[server] 缓存兜底命中: target_id={semantic_parameters.get('target_id')!r} "
+                        f"-> matched_id={semantic_matched_id}"
+                    )
+
         task_id = await agent_service.submit_task(
-            instruction=request.instruction,
+            instruction=instruction,
             task_name=request.task_name,
             max_steps=request.max_steps,
             max_retries=request.max_retries,
@@ -188,8 +223,8 @@ def create_app() -> FastAPI:
             rules_dir=request.rules_dir,
             use_intent_mapping=request.use_intent_mapping,
             intent_mapping_config_path=request.intent_mapping_config_path,
-            semantic_matched_id=request.semantic_matched_id,
-            semantic_parameters=request.semantic_parameters,
+            semantic_matched_id=semantic_matched_id,
+            semantic_parameters=semantic_parameters,
             input_images=request.input_images,
         )
 

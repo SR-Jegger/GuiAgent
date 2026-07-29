@@ -3,28 +3,26 @@
 支持实时流式音频输入，客户端可以边说边收到识别结果。
 """
 
-import os
 import uuid
 import json
 import asyncio
 import base64
-import tempfile
-import wave
 import numpy as np
 from typing import Optional
 from datetime import datetime
 
-import torch
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from qwen_asr import Qwen3ASRModel
 
-# 初始化模型
-model = Qwen3ASRModel.from_pretrained(
-    "./Qwen3-ASR-1.7B",
-    dtype=torch.bfloat16,
-    device_map="cuda:0",
+# 初始化模型（vLLM 后端，比 transformers 后端推理更快）
+model = Qwen3ASRModel.LLM(
+    model="./Qwen3-ASR-1.7B",
     max_inference_batch_size=32,
     max_new_tokens=256,
+    dtype="bfloat16",
+    tensor_parallel_size=1,
+    gpu_memory_utilization=0.8,
+    trust_remote_code=True,
 )
 
 app = FastAPI(title="Qwen ASR WebSocket Service")
@@ -40,7 +38,7 @@ class AudioSession:
         self.sample_rate: int = 16000
         self.min_chunk_duration: float = 0.3  # 最小处理时长（秒）- 降低以更快响应
         self.max_chunk_duration: float = 10.0  # 最大缓冲时长（秒）
-        self.silence_threshold: float = 0.015  # 静音检测阈值 - 稍微提高以减少噪音误判
+        self.silence_threshold: float = 0.03  # 静音检测阈值 - 嘈杂环境微调，过低噪音误触发，过高小声说话被切断
         self.silence_timeout: float = 1.0  # 静音超时阈值（秒）- 最后语音后多久处理
         self.last_speech_time: Optional[float] = None  # 最后检测到语音的时间（绝对时间）
         self.last_chunk_time: Optional[float] = None  # 最后收到音频块的时间
@@ -62,29 +60,6 @@ class AudioSession:
         rms = np.sqrt(np.mean(audio_data**2))
         return rms > self.silence_threshold
 
-    def _save_buffer_to_wav(self) -> str:
-        """将缓冲区音频保存为临时 WAV 文件"""
-        if not self.audio_buffer:
-            return None
-
-        # 合并音频数据
-        combined = np.concatenate(self.audio_buffer)
-
-        # 创建临时文件
-        temp_file = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
-        temp_path = temp_file.name
-
-        # 转为 16-bit PCM
-        audio_int16 = (combined * 32767).astype(np.int16)
-
-        with wave.open(temp_path, "wb") as wf:
-            wf.setnchannels(1)
-            wf.setsampwidth(2)  # 16-bit
-            wf.setframerate(self.sample_rate)
-            wf.writeframes(audio_int16.tobytes())
-
-        return temp_path
-
     def _should_process(self, has_speech: bool) -> bool:
         """判断是否应该处理当前缓冲区"""
         now = asyncio.get_event_loop().time() if asyncio.get_event_loop().is_running() else 0
@@ -103,18 +78,29 @@ class AudioSession:
 
     async def process_buffer(self):
         """处理缓冲区音频并返回识别结果"""
-        if self.buffer_duration < self.min_chunk_duration:
+        # Qwen3-ASR 要求音频 >= 0.5s，取 max 防止 min_chunk_duration 配置过小
+        min_duration = max(self.min_chunk_duration, 0.5)
+        if self.buffer_duration < min_duration:
             return
 
-        temp_path = self._save_buffer_to_wav()
-        if not temp_path:
+        if not self.audio_buffer:
             return
+
+        combined = np.concatenate(self.audio_buffer)
 
         try:
-            # 调用模型识别
-            results = model.transcribe(
-                audio=temp_path,
+            # model.transcribe 是同步阻塞，丢到线程池避免卡住事件循环
+            t0 = asyncio.get_event_loop().time()
+            results = await asyncio.to_thread(
+                model.transcribe,
+                audio=(combined, self.sample_rate),
                 language="Chinese",
+            )
+            t1 = asyncio.get_event_loop().time()
+            print(
+                f"[ASR] transcribe 耗时: {t1-t0:.3f}s, "
+                f"音频时长: {self.buffer_duration:.1f}s, "
+                f"RTF={((t1-t0)/self.buffer_duration):.2f}"
             )
 
             if results and results[0].text.strip():
@@ -138,9 +124,6 @@ class AudioSession:
             })
 
         finally:
-            # 清理临时文件和缓冲区
-            if os.path.exists(temp_path):
-                os.remove(temp_path)
             self.audio_buffer = []
             self.buffer_duration = 0.0
             self.last_speech_time = None
@@ -180,9 +163,6 @@ class AudioSession:
         self.buffer_duration = 0.0
         self.last_speech_time = None
         self.last_chunk_time = None
-        """重置缓冲区"""
-        self.audio_buffer = []
-        self.buffer_duration = 0.0
 
 
 @app.websocket("/asr/stream")

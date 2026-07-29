@@ -82,8 +82,8 @@ class RealtimeASRClient:
             "type": "session.update",
             "session": {
                 "sample_rate": self.sample_rate,
-                "silence_threshold": 0.01,
-                "min_chunk_duration": 2.0,
+                "silence_threshold": 0.03,
+                "min_chunk_duration": 0.8,
             },
         }
         ws.send(json.dumps(config))
