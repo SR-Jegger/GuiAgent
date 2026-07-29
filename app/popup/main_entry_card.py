@@ -925,7 +925,7 @@ def _build_main_entry_window():
                 self._set_dock_voice_recording(False)
                 self._update_dock_border()
                 self.voice_button.setText("🎤 语音输入")
-                self.voice_button.setStyleSheet("")
+                self.voice_button.setStyleSheet("background: #2563EB;")
                 self.voice_button.setEnabled(False)
                 self.cancel_button.setEnabled(True)  # 启用取消按钮
                 if self._preset_btn:
@@ -1024,7 +1024,7 @@ def _build_main_entry_window():
             self._set_dock_voice_recording(False)
             self._update_dock_border()
             self.voice_button.setText("🎤 语音输入")
-            self.voice_button.setStyleSheet("")
+            self.voice_button.setStyleSheet("background: #2563EB;")
             self.voice_button.setEnabled(False)
             self.cancel_button.setEnabled(True)
             if self._preset_btn:
@@ -1185,7 +1185,7 @@ def _build_main_entry_window():
             self.cancel_button.setEnabled(False)
             self.voice_button.setEnabled(True)
             self.voice_button.setText("🎤 语音输入")
-            self.voice_button.setStyleSheet("")
+            self.voice_button.setStyleSheet("background: #2563EB;")
             if self._preset_btn:
                 self._preset_btn.setEnabled(True)
             self.hint_label.setText("等待任务输入")
@@ -1205,7 +1205,7 @@ def _build_main_entry_window():
                 self._set_dock_voice_recording(False)
                 self._update_dock_border()
                 self.voice_button.setText("🎤 语音输入")
-                self.voice_button.setStyleSheet("")
+                self.voice_button.setStyleSheet("background: #2563EB;")
                 self.cancel_button.setEnabled(False)
                 self.hint_label.setText("已取消录音")
                 return
@@ -1444,7 +1444,7 @@ def _build_main_entry_window():
             if recording:
                 self._dock_voice_btn.setStyleSheet("background: #EF4444;")
             else:
-                self._dock_voice_btn.setStyleSheet("")
+                self._dock_voice_btn.setStyleSheet("background: rgba(59, 166, 217, 0.25);")
 
         def _flash_dock_border_red(self) -> None:
             """ASR 连接失败时，dock 边框短暂变红 200ms 后恢复当前状态色。"""
